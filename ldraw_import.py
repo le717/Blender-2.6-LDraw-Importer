@@ -72,12 +72,12 @@ class ldraw_file(object):
         
             for i, f in enumerate(me.polygons):
                 n = self.material_index[i]
-                mat = getMaterial(n)
+                material = getMaterial(n)
                 
-                if me.materials.get(mat.name) == None:
-                    me.materials.append(mat)
+                if me.materials.get(material.name) == None:
+                    me.materials.append(material)
                 
-                f.material_index = me.materials.find(mat.name)
+                f.material_index = me.materials.find(material.name)
 
             self.ob = bpy.data.objects.new('LDrawObj', me)
             self.ob.name = os.path.basename(filename)
@@ -264,7 +264,7 @@ def locate(pattern):
     return (fname, isPart)
 
 # Create the actual model         
-def create_model(self, context):
+def create_model(self, scale, context):
     global objects
     global colors
     global mat_list
@@ -275,7 +275,7 @@ def create_model(self, context):
         
         # Set the initial transformation matrix, set the scale factor to 0.05 
         # and rotate -90 degrees around the x-axis, so the object is upright.
-        mat = mathutils.Matrix(((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * 0.05
+        mat = mathutils.Matrix(((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * scale
         mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
  
         # Scan LDConfig to get the material color info.
@@ -346,6 +346,8 @@ class IMPORT_OT_ldraw(bpy.types.Operator, ImportHelper):
     ldrawPath = bpy.props.StringProperty(name="LDraw Path", description="The folder path to your LDraw System of Tools installation.", maxlen=1024,
     default = {"win32": WinLDrawDir, "darwin": OSXLDrawDir}.get(sys.platform, LinuxLDrawDir), update=get_path)
     
+    scale = bpy.props.FloatProperty(name="Scale", description="Scale the model by this amount.", default = 0.05)
+    
     cleanupModel = bpy.props.BoolProperty(name="Disable Model Cleanup", description="Does not remove double vertices or make normals consistent.", default=False)
 
     highresBricks = bpy.props.BoolProperty(name="Do Not Use High-res bricks", description="Do not use high-res bricks to import your model.", default=True) 
@@ -363,7 +365,7 @@ class IMPORT_OT_ldraw(bpy.types.Operator, ImportHelper):
         CleanUp = bool(self.cleanupModel)
         HighRes = bool(self.highresBricks)
         print("executes\n")
-        create_model(self, context)
+        create_model(self, self.scale, context)
         return {'FINISHED'}
 
 # Registering / Unregister
