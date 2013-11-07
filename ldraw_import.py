@@ -17,7 +17,7 @@
 ###### END GPL LICENSE BLOCK #####
 
 bl_info = {
-    "name": "Blender 2.6 LDraw Importer 1.1",
+    "name": "Blender 2.6 LDraw Importer",
     "description": "Import LDraw models in .dat, and .ldr format",
     "author": "David Pluntze, JrMasterModelBuilder, Triangle717, Banbury, rioforce, Tribex",
     "version": (1, 1, 0),
@@ -27,7 +27,7 @@ bl_info = {
     "warning": "Cycles support is incomplete",
     "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Import-Export/LDRAW_Importer",
     #"tracker_url": "maybe"
-                    #"soon",
+                #"soon",
     "category": "Import-Export"}
 
 import os
@@ -36,16 +36,17 @@ import math
 import mathutils
 import traceback
 from struct import unpack
+from time import strftime
 
 import bpy
 import bpy.props
 from bpy_extras.io_utils import ImportHelper
 
-
 # Global variables
 mat_list = {}
 colors = {}
 scale = 1.0
+
 WinLDrawDir = "C:\\LDraw"
 OSXLDrawDir = "/Applications/ldraw/"
 LinuxLDrawDir = "~/ldraw/"
@@ -157,32 +158,33 @@ class LDrawFile(object):
         self.material_index.append(color)
 
     def parse(self, filename):
-
+        """Construct tri's in each brick"""
         subfiles = []
 
         while True:
-            # Attempt to open the required brick using relative path
+            isPart = False
             if os.path.exists(filename):
-                with open(filename, "rt") as f_in:
+
+                # Check if this is a main part or a subpart
+                if not isSubPart(filename):
+                    isPart = True
+
+                # Read the brick using relative path (to entire model)
+                with open(filename, "rt", encoding="utf-8") as f_in:
                     lines = f_in.readlines()
 
-                """
-                That didn't work, so attempt to open the required brick
-                using absolute path.
-                """
             else:
+                # Search for the brick in the various folders
                 fname, isPart = locate(filename)
 
+                # It exists, read it and get the data
                 if os.path.exists(fname):
-                    with open(fname, "rt") as f_in:
+                    with open(fname, "rt", encoding="utf-8") as f_in:
                         lines = f_in.readlines()
+
+                # The brick does not exist
                 else:
-                    #TODO: URL
-                    """
-                    http://www.blender.org/documentation/blender_python_api_2_69_release/bpy.types.Operator.html?highlight=operator#bpy.types.Operator.report
-                    See 2.69\scripts\addons\io_scene_fbx\import_fbx.py
-                    """
-                    print("\nFile not found: {0}".format(fname))
+                    debugPrint("File not found: {0}".format(fname))
                     return False
 
             self.part_count += 1
@@ -193,6 +195,7 @@ class LDrawFile(object):
                     tmpdate = retval.strip()
                     if tmpdate != '':
                         tmpdate = tmpdate.split()
+
                         # LDraw brick comments
                         if tmpdate[0] == "0":
                             if len(tmpdate) >= 3:
@@ -240,10 +243,10 @@ class LDrawFile(object):
 
 
 def getMaterial(colour):
-    """Get and apply each brick's material"""
+    """Get Blender Internal Material Values"""
     if colour in colors:
         if not (colour in mat_list):
-            mat = bpy.data.materials.new("Mat_" + colour + "_")
+            mat = bpy.data.materials.new("Mat_{0}_".format(colour))
             col = colors[colour]
 
             mat.diffuse_color = col["color"]
@@ -336,14 +339,15 @@ def getCyclesMaterial(colour):
 
         return mat_list[colour]
     else:
-        mat_list[colour] = getCyclesBase('Mat_' + colour + "_", (1, 1, 0), 1.0)
+        mat_list[colour] = getCyclesBase("Mat_{0}_".format(colour),
+                                         (1, 1, 0), 1.0)
         return mat_list[colour]
 
     return None
 
 
 def getCyclesBase(name, diff_color, alpha):
-
+    """Basic Plastic"""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
 
@@ -410,8 +414,10 @@ def getCyclesEmit(name, diff_color, alpha, luminance):
     out = nodes.new('ShaderNodeOutputMaterial')
     out.location = 290, 100
 
-    # NOTE: The alpha value again is not making much sense here.
-    # I'm leaving it in, in case someone has an idea how to use it.
+    """
+    NOTE: The alpha value again is not making much sense here.
+    I'm leaving it in, in case someone has an idea how to use it.
+    """
 
     trans = nodes.new('ShaderNodeBsdfTranslucent')
     trans.location = -242, 154
@@ -428,7 +434,7 @@ def getCyclesEmit(name, diff_color, alpha, luminance):
 
 
 def getCyclesChrome(name, diff_color):
-    """Set Cycles Chrome Material"""
+    """Cycles Chrome Material"""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
 
@@ -487,7 +493,7 @@ def getCyclesPearlMetal(name, diff_color, roughness):
 
 
 def getCyclesRubber(name, diff_color, alpha):
-
+    """Cycles Rubber Material"""
     mat = bpy.data.materials.new(name)
     mat.use_nodes = True
 
@@ -569,6 +575,17 @@ def getCyclesMilkyWhite(name, diff_color):
     return mat
 
 
+def isSubPart(brick):
+    """Check if brick is a main part or a subpart"""
+
+    if str.lower(os.path.split(brick)[0]) == "s":
+        isSubpart = True
+    else:
+        isSubpart = False
+
+    return isSubpart
+
+
 def locate(pattern):
     """
     Locate all files matching supplied filename pattern in and below
@@ -578,35 +595,31 @@ def locate(pattern):
     """
     fname = pattern.replace("\\", os.path.sep)
     isPart = False
-    if str.lower(os.path.split(fname)[0]) == "s":
-        isSubpart = True
-    else:
-        isSubpart = False
 
     #lint:disable
     # Define all possible folders in the library, including unofficial bricks
-    
+
     # Standard Paths:
     ldrawPath = os.path.join(LDrawDir, fname)
-    hiResPath = os.path.join(LDrawDir, "p", "48", fname)
-    primitivesPath = os.path.join(LDrawDir, "p", fname)
-    partsPath = os.path.join(LDrawDir, "parts", fname)
-    partsSPath = os.path.join(LDrawDir, "parts", "s", fname)
-    
+    hiResPath = os.path.join(LDrawDir, "p".lower(), "48".lower(), fname)
+    primitivesPath = os.path.join(LDrawDir, "p".lower(), fname)
+    partsPath = os.path.join(LDrawDir, "parts".lower(), fname)
+    partsSPath = os.path.join(LDrawDir, "parts".lower(), "s".lower(), fname)
+
     # Unoffical Paths:
-    UnofficialPath = os.path.join(LDrawDir, "unofficial", fname)
-    UnofficialhiResPath = os.path.join(LDrawDir, "unofficial",
-                                       "p", "48", fname)
-    UnofficialPrimPath = os.path.join(LDrawDir, "unofficial",
-                                      "p", fname)
-    UnofficialPartsPath = os.path.join(LDrawDir, "unofficial",
-                                       "parts", fname)
-    UnofficialPartsSPath = os.path.join(LDrawDir, "unofficial",
-                                        "parts", "s", fname)
+    UnofficialPath = os.path.join(LDrawDir, "unofficial".lower(), fname)
+    UnofficialhiResPath = os.path.join(LDrawDir, "unofficial".lower(),
+                                       "p".lower(), "48".lower(), fname)
+    UnofficialPrimPath = os.path.join(LDrawDir, "unofficial".lower(),
+                                      "p".lower(), fname)
+    UnofficialPartsPath = os.path.join(LDrawDir, "unofficial".lower(),
+                                       "parts".lower(), fname)
+    UnofficialPartsSPath = os.path.join(LDrawDir, "unofficial".lower(),
+                                        "parts".lower(), "s".lower(), fname)
     #lint:enable
     if os.path.exists(ldrawPath):
         fname = ldrawPath
-    elif os.path.exists(hiResPath) and not HighRes:  # lint:ok
+    elif os.path.exists(hiResPath) and HighRes:  # lint:ok
         fname = hiResPath
     elif os.path.exists(primitivesPath):
         fname = primitivesPath
@@ -626,14 +639,13 @@ def locate(pattern):
         fname = UnofficialPartsSPath
 
         # Since this is not a subpart, mark it as a root part
-        if not isSubpart:
+        if not isSubPart(fname):
             isPart = True
     else:
-        print("Could not find file {0}".format(fname))
+        debugPrint("Could not find file {0}".format(fname))
 
-     
-    # TODO: Currently will return the inputted path, causing any error checking to clear 
-    # until it tries to actually load parts.
+    # TODO: Currently will return the inputted path, possibly causing
+    # any error checking to clearuntil it tries to actually load parts.
     return (fname, isPart)
 
 
@@ -644,65 +656,146 @@ def create_model(self, scale, context):
     global mat_list
 
     file_name = self.filepath
-    print("\n{0}".format(file_name))
-    try:
+    debugPrint("Attempting to import {0}".format(file_name))
 
-        # Set the initial transformation matrix, set the scale factor to 0.05
-        # and rotate -90 degrees around the x-axis, so the object is upright.
-        mat = mathutils.Matrix(
-            ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * scale
-        mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
+    # Make sure the model ends with the proper extension
+    if (
+        file_name.endswith(".ldr")
+        or file_name.endswith(".dat")
+        or file_name.endswith(".lcd")
+    ):
 
-        # If LDrawDir does not exist, stop the import
-        if not os.path.isdir(LDrawDir):
-            print ('''
-ERROR: Cannot find LDraw System of Tools installation at
-{0}
-'''.format(LDrawDir))
-            return False
+        try:
 
-        colors = {}
-        mat_list = {}
+            """
+            Set the initial transformation matrix,
+            set the scale factor to 0.05,
+            and rotate -90 degrees around the x-axis,
+            so the object is upright.
+            """
+            mat = mathutils.Matrix(
+                ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * scale
+            mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
 
-        # Get material list from LDConfig
-        scanLDConfig()
+            # If LDrawDir does not exist, stop the import
+            if not os.path.isdir(LDrawDir):
+                debugPrint(''''ERROR: Cannot find LDraw installation at
+{0}'''.format(LDrawDir))
+                self.report({'ERROR'}, '''Cannot find LDraw installation at
+{0}'''.format(LDrawDir))
+                return {'CANCELLED'}
 
-        LDrawFile(context, file_name, mat)
-        """
-        Remove doubles and recalculate normals in each brick.
-        The model is super high-poly without the cleanup.
-        Cleanup can be disabled by user if wished.
-        """
-        if CleanUp:
+            colors = {}
+            mat_list = {}
+
+            # Get material list from LDConfig
+            scanLDConfig()
+
+            LDrawFile(context, file_name, mat)
+
+            """
+            Remove doubles and recalculate normals in each brick.
+            The model is super high-poly without the cleanup.
+            Cleanup can be disabled by user if wished.
+            """
+
+            # Default values for model cleanup options
+            CleanUp = False
+            GameFix = False
+
+            # The CleanUp option was selected
+            if CleanUpOpt == "CleanUp":
+                CleanUp = True
+                debugPrint("CleanUp option selected")
+
+            # The GameFix option was selected
+            elif CleanUpOpt == "GameFix":
+                GameFix = True
+                debugPrint("GameFix option selected")
+
+            # Standard cleanup actions
+            if (CleanUp or GameFix):  # lint:ok
+
+                # Select all the mesh
+                for cur_obj in objects:
+                    cur_obj.select = True
+                    bpy.context.scene.objects.active = cur_obj
+                    if bpy.ops.object.mode_set.poll():
+
+                        # Change to edit mode
+                        bpy.ops.object.mode_set(mode='EDIT')
+                        bpy.ops.mesh.select_all(action='SELECT')
+
+                        # Remove doubles, calculate normals
+                        bpy.ops.mesh.remove_doubles(threshold=0.01)
+                        bpy.ops.mesh.normals_make_consistent()
+                        if bpy.ops.object.mode_set.poll():
+
+                            # Go back to object mode, set origin to geometry
+                            bpy.ops.object.mode_set(mode='OBJECT')
+                            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+
+                            # Set smooth shading
+                            bpy.ops.object.shade_smooth()
+
+           # -------- Actions only for CleanUp option -------- #
+
+            if CleanUp:  # lint:ok
+                # Add (do not apply!) 30 degree edge split to all bricks
+                for cur_obj in objects:
+                    edges = cur_obj.modifiers.new(
+                        "Edge Split", type='EDGE_SPLIT')
+                    edges.split_angle = 0.523599
+
+            # -------- Actions only for GameFix option -------- #
+
+            if GameFix:  # lint:ok
+                for cur_obj in objects:
+                    cur_obj.select = True
+                    bpy.context.scene.objects.active = cur_obj
+                    bpy.ops.object.mode_set()
+                    if bpy.ops.object.mode_set.poll():
+                        bpy.ops.object.mode_set(mode='EDIT')
+                        bpy.ops.mesh.select_all(action='SELECT')
+                        if bpy.ops.object.mode_set.poll():
+                            bpy.ops.object.mode_set()
+                            m = cur_obj.modifiers.new("Decimate", type='DECIMATE')
+                            m.ratio = 0.7
+                            # Add (do not apply!) 45 degree edge split to all bricks
+                            edges = cur_obj.modifiers.new("Edge Split", type='EDGE_SPLIT')
+                            edges.split_angle = 0.802851
+
+            # Select all the mesh now that import is complete
             for cur_obj in objects:
                 cur_obj.select = True
-                bpy.context.scene.objects.active = cur_obj
-                if bpy.ops.object.mode_set.poll():
-                    bpy.ops.object.mode_set(mode='EDIT')
-                    bpy.ops.mesh.select_all(action='SELECT')
-                    bpy.ops.mesh.remove_doubles(threshold=0.01)
-                    bpy.ops.mesh.normals_make_consistent()
-                    if bpy.ops.object.mode_set.poll():
-                        bpy.ops.object.mode_set(mode='OBJECT')
-                        bpy.ops.object.shade_smooth()
-                        bpy.ops.object.mode_set()
-                        m = cur_obj.modifiers.new("edge_split",
-                                                  type='EDGE_SPLIT')
-                        m.split_angle = math.pi / 4
-                cur_obj.select = False
 
-        context.scene.update()
-        objects = []
+            # Update the scene with the changes
+            context.scene.update()
+            objects = []
 
-        # Always reset 3D cursor to <0,0,0> after import
-        bpy.context.scene.cursor_location = (0.0, 0.0, 0.0)
+            # Always reset 3D cursor to <0,0,0> after import
+            bpy.context.scene.cursor_location = (0.0, 0.0, 0.0)
 
-        # Display success message
-        print("{0} successfully imported!".format(file_name))
+            # Display success message
+            debugPrint("{0} successfully imported!".format(file_name))
+            return {'FINISHED'}
 
-    except Exception:
-        print(traceback.format_exc())
-        print("\nOops, something went wrong!")
+        except Exception as e:
+            debugPrint("ERROR: {0}\n{1}\n".format(
+                       type(e).__name__, traceback.format_exc()))
+
+            debugPrint("ERROR: File not imported. Reason: {0}.".format(
+                       type(e).__name__))
+
+            self.report({'ERROR'}, '''File not imported ("{0}").
+ Check the console logs for more information.'''.format(type(e).__name__))
+            return {'CANCELLED'}
+    else:
+        debugPrint("ERROR: File not imported. Reason: Invalid File Type {0}"
+                   .format("Must be a .dat, .ldr, or .lcd)"))
+        self.report({'ERROR'}, "File not imported. Reason: {0}".format(
+                    "Invalid File Type (Must be a .dat, .ldr, or .lcd)"))
+        return {'CANCELLED'}
 
 
 def scanLDConfig():
@@ -718,43 +811,49 @@ def scanLDConfig():
                 name = line_split[2]
                 code = line_split[4]
 
-                color = {'name': name, 'color': hex_to_rgb(line_split[6][1:]), 'alpha': 1.0, 'luminance': 0.0, 'material': 'BASIC'}
+                color = {
+                    "name": name,
+                    "color": hex_to_rgb(line_split[6][1:]),
+                    "alpha": 1.0,
+                    "luminance": 0.0,
+                    "material": "BASIC"
+                }
 
                 #if len(line_split) > 10 and line_split[9] == 'ALPHA':
-                if hasColorValue(line_split, 'ALPHA'):
-                    color['alpha'] = int(getColorValue(line_split, 'ALPHA')) / 256.0
+                if hasColorValue(line_split, "ALPHA"):
+                    color["alpha"] = int(getColorValue(line_split, "ALPHA")) / 256.0
 
-                if hasColorValue(line_split, 'LUMINANCE'):
-                    color['luminance'] = int(getColorValue(line_split, 'LUMINANCE'))
+                if hasColorValue(line_split, "LUMINANCE"):
+                    color["luminance"] = int(getColorValue(line_split, "LUMINANCE"))
 
-                if hasColorValue(line_split, 'CHROME'):
-                    color['material'] = 'CHROME'
+                if hasColorValue(line_split, "CHROME"):
+                    color["material"] = "CHROME"
 
-                if hasColorValue(line_split, 'PEARLESCENT'):
-                    color['material'] = 'PEARLESCENT'
+                if hasColorValue(line_split, "PEARLESCENT"):
+                    color["material"] = "PEARLESCENT"
 
                 if hasColorValue(line_split, 'RUBBER'):
-                    color['material'] = 'RUBBER'
+                    color["material"] = "RUBBER"
 
-                if hasColorValue(line_split, 'METAL'):
-                    color['material'] = 'METAL'
+                if hasColorValue(line_split, "METAL"):
+                    color["material"] = "METAL"
 
-                if hasColorValue(line_split, 'MATERIAL'):
-                    subline = line_split[line_split.index('MATERIAL'):]
+                if hasColorValue(line_split, "MATERIAL"):
+                    subline = line_split[line_split.index("MATERIAL"):]
 
-                    color['material'] = getColorValue(subline, 'MATERIAL')
-                    color['secondary_color'] = getColorValue(subline, 'VALUE')[1:]
-                    color['fraction'] = getColorValue(subline, 'FRACTION')
-                    color['vfraction'] = getColorValue(subline, 'VFRACTION')
-                    color['size'] = getColorValue(subline, 'SIZE')
-                    color['minsize'] = getColorValue(subline, 'MINSIZE')
-                    color['maxsize'] = getColorValue(subline, 'MAXSIZE')
+                    color["material"] = getColorValue(subline, "MATERIAL")
+                    color["secondary_color"] = getColorValue(subline, "VALUE")[1:]
+                    color["fraction"] = getColorValue(subline, "FRACTION")
+                    color["vfraction"] = getColorValue(subline, "VFRACTION")
+                    color["size"] = getColorValue(subline, "SIZE")
+                    color["minsize"] = getColorValue(subline, "MINSIZE")
+                    color["maxsize"] = getColorValue(subline, "MAXSIZE")
 
                 colors[code] = color
 
 
 def hasColorValue(line, value):
-
+    """Check if the color value is present"""
     return value in line
 
 
@@ -765,9 +864,12 @@ def getColorValue(line, value):
         return line[n + 1]
 
 
-def get_path(self, context):
+def _get_path(self, context):
     """Displays full file path of model being imported"""
-    print(context)
+
+    # FIXME: Currently prints the class information of the
+    # context object, not a path
+    debugPrint(context)
 
 
 def hex_to_rgb(rgb_str):
@@ -775,7 +877,23 @@ def hex_to_rgb(rgb_str):
     int_tuple = unpack('BBB', bytes.fromhex(rgb_str))
     return tuple([val / 255 for val in int_tuple])
 
+
+def debugPrint(string):
+    """Debug print with timestamp for identification"""
+    print("\n[LDraw Importer] {0} - {1}\n".format(
+          string, strftime("%H:%M:%S")))
+
 # ------------ Operator ------------ #
+
+# Model cleanup options
+# First option does not require any checks
+#TODO: Finish GameFix
+CLEANUP_OPTIONS = (
+    ("DoNothing", "Original LDraw Brick", "Do not perform any changes"),
+    ("CleanUp", "Model Cleanup",
+"Remove double vertices, make normals consistent, add 35 degree edge split"),
+    ("GameFix", "Game Optimization", "Optimize model for video game usage"),
+)
 
 
 class IMPORT_OT_ldraw(bpy.types.Operator, ImportHelper):
@@ -785,15 +903,23 @@ class IMPORT_OT_ldraw(bpy.types.Operator, ImportHelper):
     bl_label = "Import LDraw Model"
     bl_space_type = "PROPERTIES"
     bl_region_type = "WINDOW"
-    bl_options = {'UNDO', 'PRESET'}
+    bl_options = {'REGISTER', 'UNDO', 'PRESET'}
 
-    ## Script Options ##
+    ## File type filter in file browser ##
+
+    filename_ext = ".dat"
+    filter_glob = bpy.props.StringProperty(
+        default="*.dat;*.ldr;*.lcd",
+        options={'HIDDEN'}
+    )
+
+    ## Import options ##
 
     ldrawPath = bpy.props.StringProperty(
         name="LDraw Path",
         description="Folder path to your LDraw System of Tools installation",
         default={"win32": WinLDrawDir, "darwin": OSXLDrawDir}.get(
-            sys.platform, LinuxLDrawDir), update=get_path
+            sys.platform, LinuxLDrawDir), update=_get_path
     )
 
     scale = bpy.props.FloatProperty(
@@ -802,24 +928,35 @@ class IMPORT_OT_ldraw(bpy.types.Operator, ImportHelper):
         default=0.05
     )
 
-    cleanupModel = bpy.props.BoolProperty(
-        name="Enable Model Cleanup",
-        description="Remove double vertices and make normals consistent",
-        default=True
+    highResBricks = bpy.props.BoolProperty(
+        name="Use High-res bricks",
+        description="Import high-resolution bricks in your model",
+        default=False
     )
 
-    highresBricks = bpy.props.BoolProperty(
-        name="Do Not Use High-res bricks",
-        description="Do not use high-res bricks to import your model",
-        default=True
+    cleanUpModel = bpy.props.EnumProperty(
+        name="Model Cleanup Options",
+        items=CLEANUP_OPTIONS,
+        description="Model cleanup options"
     )
+
+    def draw(self, context):
+        """Display model cleanup options"""
+        layout = self.layout
+        box = layout.box()
+        box.label("Import Options:", icon='FILTER')
+        box.prop(self, "ldrawPath")
+        box.prop(self, "scale")
+        box.prop(self, "highResBricks")
+        box.label("Model Cleanup:", icon='MATERIAL')
+        box.prop(self, "cleanUpModel", expand=True)
 
     def execute(self, context):
         """Set import options and run the script"""
-        global LDrawDir, CleanUp, HighRes
+        global LDrawDir, CleanUp, GameFix, HighRes, CleanUpOpt
         LDrawDir = str(self.ldrawPath)
-        CleanUp = bool(self.cleanupModel)
-        HighRes = bool(self.highresBricks)
+        HighRes = bool(self.highResBricks)
+        CleanUpOpt = str(self.cleanUpModel)
 
         create_model(self, self.scale, context)
         return {'FINISHED'}
