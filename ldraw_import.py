@@ -44,6 +44,7 @@ import bpy.props
 from bpy_extras.io_utils import ImportHelper
 
 # Global variables
+objects = []
 mat_list = {}
 colors = {}
 scale = 1.0
@@ -52,7 +53,40 @@ scale = 1.0
 WinLDrawDir = "C:\\LDraw"
 OSXLDrawDir = "/Applications/ldraw/"
 LinuxLDrawDir = "~/ldraw/"
-objects = []
+UserLDrawDir = ""
+
+# Location of addon script
+addon_path = os.path.abspath(os.path.dirname(__file__))
+# Name and location of configuration file
+config_filename = os.path.join(addon_path, "config.cfg")
+
+
+def debugPrint(string):
+    """Debug print with timestamp for identification"""
+    print("\n[LDraw Importer] {0} - {1}\n".format(
+          string, strftime("%H:%M:%S")))
+
+
+# Attempt to read and uae the path in the config
+try:
+    # A hacky trick that basically is: from config.cfg import *
+    exec(compile(open(config_filename).read(), config_filename, 'exec'))
+
+    # Set UserLDrawDir to the value that was in the file (ldraw_dir)
+    UserLDrawDir = ldraw_dir
+
+# Suppress error when script is run the first time
+# and the cfg does not yet exist
+except FileNotFoundError:
+    pass
+
+# If we had an error, dump the traceback
+except Exception as e:
+    debugPrint("ERROR: {0}\n{1}\n".format(
+               type(e).__name__, traceback.format_exc()))
+
+    debugPrint("ERROR: Reason: {0}.".format(
+               type(e).__name__))
 
 
 class LDrawFile(object):
@@ -891,16 +925,15 @@ def findLDrawPath():
     return install_path
 
 
+def RunMe(self, context):
+    """Run process to store the installation path"""
+    saveInstallPath(self)
+
+
 def hex_to_rgb(rgb_str):
     """Convert color hex value to RGB value"""
     int_tuple = unpack('BBB', bytes.fromhex(rgb_str))
     return tuple([val / 255 for val in int_tuple])
-
-
-def debugPrint(string):
-    """Debug print with timestamp for identification"""
-    print("\n[LDraw Importer] {0} - {1}\n".format(
-          string, strftime("%H:%M:%S")))
 
 # ------------ Operator ------------ #
 
@@ -931,15 +964,29 @@ class LDrawImporterOp(bpy.types.Operator, ImportHelper):
         options={'HIDDEN'}
     )
 
-    ## Import options ##
+    # The installation path was defined, use it
+    if UserLDrawDir != "":
+        FinalLDrawDir = UserLDrawDir
+
+    # The installation path was not defined, fall back to defaults
+    # On Windows, this means attempting to detect the installation
+    else:
+        FinalLDrawDir = {
+            # When it uses WinLDrawDir, the cfg is written
+            "win32": WinLDrawDir,
+            # When it detects, the cfg is not written
+            #FIXME: Detect path and write file
+            #"win32": findLDrawPath),
+            "darwin": OSXLDrawDir}.get(
+                sys.platform, LinuxLDrawDir)
 
     ldrawPath = bpy.props.StringProperty(
         name="LDraw Path",
-        description="Folder path to your LDraw System of Tools installation",
-        default={"win32": findLDrawPath(), "darwin": OSXLDrawDir}.get(
-            sys.platform, LinuxLDrawDir)
+        description="Path to the LDraw Parts Library",
+        default=FinalLDrawDir, update=RunMe
     )
 
+    ## Import options ##
     scale = bpy.props.FloatProperty(
         name="Scale",
         description="Scale the model by this amount",
@@ -982,6 +1029,20 @@ class LDrawImporterOp(bpy.types.Operator, ImportHelper):
 
         create_model(self, self.scale, context)
         return {'FINISHED'}
+
+
+def saveInstallPath(self):
+    """Save the LDraw installation path for future use"""
+    # The contents of the configuration file
+    config_contents = '''# -*- coding: utf-8 -*-
+# Blender 2.6 LDraw Importer Configuration File #
+
+# Path to the LDraw Parts Library:
+{0}"{1}"
+'''.format("ldraw_dir = ", self.ldrawPath)
+
+    with open(config_filename, "wt") as f:
+        f.write(config_contents)
 
 
 def menu_import(self, context):
