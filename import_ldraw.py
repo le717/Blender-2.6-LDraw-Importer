@@ -6,6 +6,8 @@ lk_mod_1
     Fix bug found in a part contains other part(not subpart). Example:"2555.dat" separates into 2 objects.
 lk_mod_2
     Keep LDraw's origin.
+lk_mod_3
+    Use same mesh in same part(in same color).
 """
 
 # -*- coding: utf-8 -*-
@@ -182,7 +184,11 @@ class LDrawFile(object):
         bpy.ops.object.select_all(action='DESELECT')
 
         if len(self.points) > 0 and len(self.faces) > 0:
-            me = bpy.data.meshes.new('LDrawMesh')
+            #lk_mod_3-1
+            #me = bpy.data.meshes.new('LDrawMesh')
+            me = bpy.data.meshes.new(os.path.basename(filename)+"."+self.colour) #lk_memo If you change this line, you must change
+            #                                                                    #lk_memo "if os.path.basename(i[0])+"."+str(i[2]) in bpy.data.meshes:"
+            #lk_mod_3-1_end
             me.from_pydata(self.points, [], self.faces)
             me.validate()
             me.update()
@@ -216,8 +222,27 @@ class LDrawFile(object):
             # Link object to scene
             bpy.context.scene.objects.link(self.ob)
 
+        #lk_mod_3-2 ----------------------------------------------------------------------------------------------------lk_mod_3-2
+        #lk_memo Use same mesh in same part(in same color)
+        """
         for i in self.subparts:
             self.submodels.append(LDrawFile(context, i[0], i[1], i[2]))
+        """
+        for i in self.subparts:
+            if os.path.basename(i[0])+"."+str(i[2]) in bpy.data.meshes:
+                me = bpy.data.meshes[os.path.basename(i[0])+"."+str(i[2])]
+
+                self.ob = bpy.data.objects.new(os.path.basename(i[0]), me)    #lk_memo "[NAME].001" or some
+
+                self.ob.matrix_world = mat * i[1]
+
+                objects.append(self.ob)
+
+                # Link object to scene
+                bpy.context.scene.objects.link(self.ob)
+            else:
+                self.submodels.append(LDrawFile(context, i[0], mat*i[1], i[2]))
+        #lk_mod_3-2_end ----------------------------------------------------------------------------------------------------lk_mod_3-2_end
 
     def parse_line(self, line):
         """Harvest the information from each line"""
