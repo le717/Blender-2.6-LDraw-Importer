@@ -1,3 +1,11 @@
+"""
+Modified by lk.lkaz (http://www.flickr.com/photos/lk-lkaz)
+Search "#lk_mod_" to see what I changed.
+
+lk_mod_1
+    Fix bug found in a part contains other part(not subpart). Example:"2555.dat" separates into 2 objects.
+"""
+
 # -*- coding: utf-8 -*-
 ###### BEGIN GPL LICENSE BLOCK #####
 #
@@ -297,7 +305,10 @@ class LDrawFile(object):
                     return False
 
             self.part_count += 1
-            if self.part_count > 1 and isPart:
+            #lk_mod_1-1
+            #lk_memo Add new condition for a part contains other part(not subpart). Example:"2555.dat"
+            #if self.part_count > 1 and isPart:
+            if self.part_count > 1 and isPart and len(self.faces) == 0:
                 self.subparts.append([filename, self.mat, self.colour])
             else:
                 for retval in lines:
@@ -305,6 +316,8 @@ class LDrawFile(object):
                     if tmpdate != '':
                         tmpdate = tmpdate.split()
 
+                        #lk_mod_1-2
+                        """
                         # LDraw brick comments
                         if tmpdate[0] == "0":
                             if len(tmpdate) >= 3:
@@ -317,6 +330,8 @@ class LDrawFile(object):
                                             [filename, self.mat, self.colour]
                                         )
                                         break
+                        """
+                        #lk_mod_1-2_end
 
                         # The brick content
                         if tmpdate[0] == "1":
@@ -710,7 +725,15 @@ def locate(pattern):
         # Perform a direct check
         fname = os.path.join(path, partName)
         if os.path.exists(fname):
+            #lk_mod_1-3
+            """
             return (fname, False)
+            """
+            if os.path.basename(path) == "parts":
+                return (fname, True)
+            else:
+                return (fname, False)
+            #lk_mod_1-3_end
         else:
             # Perform a normalized check
             fname = os.path.join(path, partName.lower())
