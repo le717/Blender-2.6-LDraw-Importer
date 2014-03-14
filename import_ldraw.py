@@ -14,6 +14,10 @@ lk_mod_5
     For rigid_body simulation,
         Apply scale and change origin to center_of_mass.
         Add new property ".Mesh.lk_LDraw_origin" to save LDraw's origin.
+
+lk_mod_0
+    Trivial changes.
+    Remove "submodels" in LDrawFile()
 """
 
 # -*- coding: utf-8 -*-
@@ -50,7 +54,7 @@ bl_info = {
 
 import os
 import sys
-import math
+#lk_mod_0 import math
 import mathutils
 import traceback
 from struct import unpack
@@ -174,7 +178,7 @@ class LDrawFile(object):
         self.faces = []
         self.material_index = []
         self.subparts = []
-        self.submodels = []
+        #lk_mod_0 self.submodels = []
         self.part_count = 0
 
         #lk_mod_2-1
@@ -276,7 +280,8 @@ class LDrawFile(object):
                 self.ob.location -= self.ob.matrix_world.to_3x3() * mathutils.Vector(self.ob.data.lk_LDraw_origin)
                 #lk_mod_5-2_end
             else:
-                self.submodels.append(LDrawFile(context, i[0], mat*i[1], i[2]))
+                #lk_mod_0 self.submodels.append(LDrawFile(context, i[0], mat*i[1], i[2]))
+                LDrawFile(context, i[0], mat*i[1], i[2])
         #lk_mod_3-2_end ----------------------------------------------------------------------------------------------------lk_mod_3-2_end
 
     def parse_line(self, line):
@@ -308,6 +313,8 @@ class LDrawFile(object):
         if color == '16':
             color = self.colour
 
+        #lk_mod_0
+        """
         v.append(self.mat * mathutils.Vector((float(line[0 * 3 + 2]),
                  float(line[0 * 3 + 3]), float(line[0 * 3 + 4]))))
         v.append(self.mat * mathutils.Vector((float(line[1 * 3 + 2]),
@@ -316,6 +323,16 @@ class LDrawFile(object):
                  float(line[2 * 3 + 3]), float(line[2 * 3 + 4]))))
         v.append(self.mat * mathutils.Vector((float(line[3 * 3 + 2]),
                  float(line[3 * 3 + 3]), float(line[3 * 3 + 4]))))
+        """
+        v.append(self.mat * mathutils.Vector((float(line[2]),
+                 float(line[3]), float(line[4]))))
+        v.append(self.mat * mathutils.Vector((float(line[5]),
+                 float(line[6]), float(line[7]))))
+        v.append(self.mat * mathutils.Vector((float(line[8]),
+                 float(line[9]), float(line[10]))))
+        v.append(self.mat * mathutils.Vector((float(line[11]),
+                 float(line[12]), float(line[13]))))
+        #lk_mod_0_end
 
         nA = (v[1] - v[0]).cross(v[2] - v[0])
         nB = (v[2] - v[1]).cross(v[3] - v[1])
@@ -851,9 +868,15 @@ Must be a .ldr or .dat''')
             and rotate -90 degrees around the x-axis,
             so the object is upright.
             """
+
+            #lk_mod_0
+            """
             mat = mathutils.Matrix(
                 ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * scale
             mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
+            """
+            mat = mathutils.Matrix(((scale,0,0,0),(0,0,scale,0),(0,-scale,0,0),(0,0,0,1)))
+            #lk_mod_0_end
 
             # If LDrawDir does not exist, stop the import
             if not os.path.isdir(LDrawDir):  # noqa
