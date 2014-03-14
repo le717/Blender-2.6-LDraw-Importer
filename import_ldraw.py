@@ -8,6 +8,8 @@ lk_mod_2
     Keep LDraw's origin.
 lk_mod_3
     Use same mesh in same part(in same color).
+lk_mod_4
+    Delete no-user meshes before start LDrawFile() (to avoid no-material error in lk_mod_3).
 """
 
 # -*- coding: utf-8 -*-
@@ -833,6 +835,13 @@ Must be a .ldr or .dat''')
 
             # Get material list from LDConfig.ldr
             scanLDConfig(self)
+
+            #lk_mod_4-1
+            # Delete no-user meshes
+            for me in bpy.data.meshes:
+                if me.users == 0 and ('.dat.' in me.name or '.DAT.' in me.name):    #lk_memo Only LEGO meshes?
+                    bpy.data.meshes.remove(me)
+            #lk_mod_4-1_end
 
             LDrawFile(context, file_name, mat)
 
