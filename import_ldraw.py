@@ -4,6 +4,8 @@ Search "#lk_mod_" to see what I changed.
 
 lk_mod_1
     Fix bug found in a part contains other part(not subpart). Example:"2555.dat" separates into 2 objects.
+lk_mod_2
+    Keep LDraw's origin.
 """
 
 # -*- coding: utf-8 -*-
@@ -167,7 +169,11 @@ class LDrawFile(object):
         self.submodels = []
         self.part_count = 0
 
-        self.mat = mat
+        #lk_mod_2-1
+        #lk_memo To keep LDraw's origin
+        #self.mat = mat
+        self.mat = mathutils.Matrix()
+        #lk_mod_2-1_end
         self.colour = colour
         self.parse(filename)
 
@@ -200,7 +206,10 @@ class LDrawFile(object):
             self.ob = bpy.data.objects.new('LDrawObj', me)
             self.ob.name = os.path.basename(filename)
 
-            self.ob.location = (0, 0, 0)
+            #lk_mod_2-2
+            #self.ob.location = (0, 0, 0)
+            self.ob.matrix_world = mat
+            #lk_mod_2-2_end
 
             objects.append(self.ob)
 
@@ -830,7 +839,9 @@ Must be a .ldr or .dat''')
 
                             # Go back to object mode, set origin to geometry
                             bpy.ops.object.mode_set(mode='OBJECT')
-                            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+                            #lk_mod_2-3
+                            #bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+                            #lk_mod_2-3_end
 
                             # Set smooth shading
                             bpy.ops.object.shade_smooth()
