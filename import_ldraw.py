@@ -1,4 +1,38 @@
 """
+ Dear Triangle717:
+
+ Hello, my screen name is "lk.lkaz". I am an user of your "LDR Importer" Blender addon. 
+ Today, I am writing this message for two purposes. 
+
+  1) Report a bug fix, and my idea for faster importing. 
+  2) Ask for permission to upload my mod program to my brickshelf page. 
+
+
+1) Report a bug and ideas
+ First, I found a bug while importing "2555.dat". It separates into 2 objects. 
+I figured out an idea for fix it. Search "lk_mod_1" to see what I changed. 
+ Second, I modified the way of creating mesh and object in LDrawFile() for faster importing. 
+Search "lk_mod_2", "lk_mod_3", and "lk_mod_4" to see what I changed. 
+ If you like my modifications, would you accept them for next release, please? 
+
+
+2) Ask for permission
+ I think that the last modification "lk_mod_5" is not suitable for common use. 
+It is made for my specific perpose. I am now making a re-exporter program. 
+My plan is like this -->
+  a) Import a LDraw model into Blender. 
+  b) Set location by rigid_body simulation. 
+  c) Export a new LDraw model with simulated location. 
+  d) Render by POV-Ray with LGEO library. 
+ When I finished the work, I want to publish the exporter program with the paired importer program. 
+ Is it possible to upload my mod program(based on your v1.1.0) to my brickshelf page? Or upload it to github as a new branch?
+
+
+Sincerely,
+lk.lkaz
+"""
+
+"""
 Modified by lk.lkaz (http://www.flickr.com/photos/lk-lkaz)
 Search "#lk_mod_" to see what I changed.
 
