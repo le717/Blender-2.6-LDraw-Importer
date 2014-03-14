@@ -10,6 +10,10 @@ lk_mod_3
     Use same mesh in same part(in same color).
 lk_mod_4
     Delete no-user meshes before start LDrawFile() (to avoid no-material error in lk_mod_3).
+lk_mod_5
+    For rigid_body simulation,
+        Apply scale and change origin to center_of_mass.
+        Add new property ".Mesh.lk_LDraw_origin" to save LDraw's origin.
 """
 
 # -*- coding: utf-8 -*-
@@ -224,6 +228,28 @@ class LDrawFile(object):
             # Link object to scene
             bpy.context.scene.objects.link(self.ob)
 
+            #lk_mod_5-1 ----------------------------------------------------------------------------------------------------lk_mod_5-1
+            #lk_memo Apply scale and change origin to center_of_mass. (for rigid_body simulation)
+            self.ob.select = True
+
+            # Apply scale
+            bpy.ops.object.transform_apply(scale=True)
+
+            #lk_? if CleanUpOpt != "DoNothing":
+            # Change origin
+            lk_tmp_matrix = self.ob.matrix_world.copy()
+            self.ob.matrix_world = mathutils.Matrix()
+            bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS')
+
+            # Save the vector between "New origin" --> "LDraw's origin"
+            self.ob.data.lk_LDraw_origin = -self.ob.location
+
+            # Set new matrix
+            self.ob.matrix_world = lk_tmp_matrix * self.ob.matrix_world
+
+            self.ob.select = False
+            #lk_mod_5-1_end ----------------------------------------------------------------------------------------------------lk_mod_5-1_end
+
         #lk_mod_3-2 ----------------------------------------------------------------------------------------------------lk_mod_3-2
         #lk_memo Use same mesh in same part(in same color)
         """
@@ -242,6 +268,13 @@ class LDrawFile(object):
 
                 # Link object to scene
                 bpy.context.scene.objects.link(self.ob)
+
+                #lk_mod_5-2
+                # Correct scale and location
+                self.ob.scale = (1,1,1)
+                bpy.context.scene.update()
+                self.ob.location -= self.ob.matrix_world.to_3x3() * mathutils.Vector(self.ob.data.lk_LDraw_origin)
+                #lk_mod_5-2_end
             else:
                 self.submodels.append(LDrawFile(context, i[0], mat*i[1], i[2]))
         #lk_mod_3-2_end ----------------------------------------------------------------------------------------------------lk_mod_3-2_end
@@ -1255,12 +1288,14 @@ def register():
     """Register Menu Listing"""
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_import.append(menu_import)
+    bpy.types.Mesh.lk_LDraw_origin = bpy.props.FloatVectorProperty(name="LDraw_origin", description="Save LDraw's origin", default = (0.0, 0.0, 0.0))	#lk_mod_5-3
 
 
 def unregister():
     """Unregister Menu Listing"""
     bpy.utils.unregister_module(__name__)
     bpy.types.INFO_MT_file_import.remove(menu_import)
+    del bpy.types.Mesh.lk_LDraw_origin	#lk_mod_5-4
 
 
 if __name__ == "__main__":
