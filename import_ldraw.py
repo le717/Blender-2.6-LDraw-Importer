@@ -1,3 +1,59 @@
+"""
+ Dear Triangle717:
+
+ Hello, my screen name is "lk.lkaz". I am an user of your "LDR Importer" Blender addon. 
+ Today, I am writing this message for two purposes. 
+
+  1) Report a bug fix, and my idea for faster importing. 
+  2) Ask for permission to upload my mod program to my brickshelf page. 
+
+
+1) Report a bug and ideas
+ First, I found a bug while importing "2555.dat". It separates into 2 objects. 
+I figured out an idea for fix it. Search "lk_mod_1" to see what I changed. 
+ Second, I modified the way of creating mesh and object in LDrawFile() for faster importing. 
+Search "lk_mod_2", "lk_mod_3", and "lk_mod_4" to see what I changed. 
+ If you like my modifications, would you accept them for next release, please? 
+
+
+2) Ask for permission
+ I think that the last modification "lk_mod_5" is not suitable for common use. 
+It is made for my specific perpose. I am now making a re-exporter program. 
+My plan is like this -->
+  a) Import a LDraw model into Blender. 
+  b) Set location by rigid_body simulation. 
+  c) Export a new LDraw model with simulated location. 
+  d) Render by POV-Ray with LGEO library. 
+ When I finished the work, I want to publish the exporter program with the paired importer program. 
+ Is it possible to upload my mod program(based on your v1.1.0) to my brickshelf page? Or upload it to github as a new branch?
+
+
+Sincerely,
+lk.lkaz
+"""
+
+"""
+Modified by lk.lkaz (http://www.flickr.com/photos/lk-lkaz)
+Search "#lk_mod_" to see what I changed.
+
+lk_mod_1
+    Fix bug found in a part contains other part(not subpart). Example:"2555.dat" separates into 2 objects.
+lk_mod_2
+    Keep LDraw's origin.
+lk_mod_3
+    Use same mesh in same part(in same color).
+lk_mod_4
+    Delete no-user meshes before start LDrawFile() (to avoid no-material error in lk_mod_3).
+lk_mod_5
+    For rigid_body simulation,
+        Apply scale and change origin to center_of_mass.
+        Add new property ".Mesh.lk_LDraw_origin" to save LDraw's origin.
+
+lk_mod_0
+    Trivial changes.
+    Remove "submodels" in LDrawFile()
+"""
+
 # -*- coding: utf-8 -*-
 ###### BEGIN GPL LICENSE BLOCK #####
 #
@@ -32,7 +88,7 @@ bl_info = {
 
 import os
 import sys
-import math
+#lk_mod_0 import math
 import mathutils
 import traceback
 from struct import unpack
@@ -156,10 +212,14 @@ class LDrawFile(object):
         self.faces = []
         self.material_index = []
         self.subparts = []
-        self.submodels = []
+        #lk_mod_0 self.submodels = []
         self.part_count = 0
 
-        self.mat = mat
+        #lk_mod_2-1
+        #lk_memo To keep LDraw's origin
+        #self.mat = mat
+        self.mat = mathutils.Matrix()
+        #lk_mod_2-1_end
         self.colour = colour
         self.parse(filename)
 
@@ -168,7 +228,11 @@ class LDrawFile(object):
         bpy.ops.object.select_all(action='DESELECT')
 
         if len(self.points) > 0 and len(self.faces) > 0:
-            me = bpy.data.meshes.new('LDrawMesh')
+            #lk_mod_3-1
+            #me = bpy.data.meshes.new('LDrawMesh')
+            me = bpy.data.meshes.new(os.path.basename(filename)+"."+self.colour) #lk_memo If you change this line, you must change
+            #                                                                    #lk_memo "if os.path.basename(i[0])+"."+str(i[2]) in bpy.data.meshes:"
+            #lk_mod_3-1_end
             me.from_pydata(self.points, [], self.faces)
             me.validate()
             me.update()
@@ -192,15 +256,67 @@ class LDrawFile(object):
             self.ob = bpy.data.objects.new('LDrawObj', me)
             self.ob.name = os.path.basename(filename)
 
-            self.ob.location = (0, 0, 0)
+            #lk_mod_2-2
+            #self.ob.location = (0, 0, 0)
+            self.ob.matrix_world = mat
+            #lk_mod_2-2_end
 
             objects.append(self.ob)
 
             # Link object to scene
             bpy.context.scene.objects.link(self.ob)
 
+            #lk_mod_5-1 ----------------------------------------------------------------------------------------------------lk_mod_5-1
+            #lk_memo Apply scale and change origin to center_of_mass. (for rigid_body simulation)
+            self.ob.select = True
+
+            # Apply scale
+            bpy.ops.object.transform_apply(scale=True)
+
+            #lk_? if CleanUpOpt != "DoNothing":
+            # Change origin
+            lk_tmp_matrix = self.ob.matrix_world.copy()
+            self.ob.matrix_world = mathutils.Matrix()
+            bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_MASS')
+
+            # Save the vector between "New origin" --> "LDraw's origin"
+            self.ob.data.lk_LDraw_origin = -self.ob.location
+
+            # Set new matrix
+            self.ob.matrix_world = lk_tmp_matrix * self.ob.matrix_world
+
+            self.ob.select = False
+            #lk_mod_5-1_end ----------------------------------------------------------------------------------------------------lk_mod_5-1_end
+
+        #lk_mod_3-2 ----------------------------------------------------------------------------------------------------lk_mod_3-2
+        #lk_memo Use same mesh in same part(in same color)
+        """
         for i in self.subparts:
             self.submodels.append(LDrawFile(context, i[0], i[1], i[2]))
+        """
+        for i in self.subparts:
+            if os.path.basename(i[0])+"."+str(i[2]) in bpy.data.meshes:
+                me = bpy.data.meshes[os.path.basename(i[0])+"."+str(i[2])]
+
+                self.ob = bpy.data.objects.new(os.path.basename(i[0]), me)    #lk_memo "[NAME].001" or some
+
+                self.ob.matrix_world = mat * i[1]
+
+                objects.append(self.ob)
+
+                # Link object to scene
+                bpy.context.scene.objects.link(self.ob)
+
+                #lk_mod_5-2
+                # Correct scale and location
+                self.ob.scale = (1,1,1)
+                bpy.context.scene.update()
+                self.ob.location -= self.ob.matrix_world.to_3x3() * mathutils.Vector(self.ob.data.lk_LDraw_origin)
+                #lk_mod_5-2_end
+            else:
+                #lk_mod_0 self.submodels.append(LDrawFile(context, i[0], mat*i[1], i[2]))
+                LDrawFile(context, i[0], mat*i[1], i[2])
+        #lk_mod_3-2_end ----------------------------------------------------------------------------------------------------lk_mod_3-2_end
 
     def parse_line(self, line):
         """Harvest the information from each line"""
@@ -231,6 +347,8 @@ class LDrawFile(object):
         if color == '16':
             color = self.colour
 
+        #lk_mod_0
+        """
         v.append(self.mat * mathutils.Vector((float(line[0 * 3 + 2]),
                  float(line[0 * 3 + 3]), float(line[0 * 3 + 4]))))
         v.append(self.mat * mathutils.Vector((float(line[1 * 3 + 2]),
@@ -239,6 +357,16 @@ class LDrawFile(object):
                  float(line[2 * 3 + 3]), float(line[2 * 3 + 4]))))
         v.append(self.mat * mathutils.Vector((float(line[3 * 3 + 2]),
                  float(line[3 * 3 + 3]), float(line[3 * 3 + 4]))))
+        """
+        v.append(self.mat * mathutils.Vector((float(line[2]),
+                 float(line[3]), float(line[4]))))
+        v.append(self.mat * mathutils.Vector((float(line[5]),
+                 float(line[6]), float(line[7]))))
+        v.append(self.mat * mathutils.Vector((float(line[8]),
+                 float(line[9]), float(line[10]))))
+        v.append(self.mat * mathutils.Vector((float(line[11]),
+                 float(line[12]), float(line[13]))))
+        #lk_mod_0_end
 
         nA = (v[1] - v[0]).cross(v[2] - v[0])
         nB = (v[2] - v[1]).cross(v[3] - v[1])
@@ -297,7 +425,10 @@ class LDrawFile(object):
                     return False
 
             self.part_count += 1
-            if self.part_count > 1 and isPart:
+            #lk_mod_1-1
+            #lk_memo Add new condition for a part contains other part(not subpart). Example:"2555.dat"
+            #if self.part_count > 1 and isPart:
+            if self.part_count > 1 and isPart and len(self.faces) == 0:
                 self.subparts.append([filename, self.mat, self.colour])
             else:
                 for retval in lines:
@@ -305,6 +436,8 @@ class LDrawFile(object):
                     if tmpdate != '':
                         tmpdate = tmpdate.split()
 
+                        #lk_mod_1-2
+                        """
                         # LDraw brick comments
                         if tmpdate[0] == "0":
                             if len(tmpdate) >= 3:
@@ -317,6 +450,8 @@ class LDrawFile(object):
                                             [filename, self.mat, self.colour]
                                         )
                                         break
+                        """
+                        #lk_mod_1-2_end
 
                         # The brick content
                         if tmpdate[0] == "1":
@@ -710,7 +845,15 @@ def locate(pattern):
         # Perform a direct check
         fname = os.path.join(path, partName)
         if os.path.exists(fname):
+            #lk_mod_1-3
+            """
             return (fname, False)
+            """
+            if os.path.basename(path) == "parts":
+                return (fname, True)
+            else:
+                return (fname, False)
+            #lk_mod_1-3_end
         else:
             # Perform a normalized check
             fname = os.path.join(path, partName.lower())
@@ -759,9 +902,15 @@ Must be a .ldr or .dat''')
             and rotate -90 degrees around the x-axis,
             so the object is upright.
             """
+
+            #lk_mod_0
+            """
             mat = mathutils.Matrix(
                 ((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1))) * scale
             mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
+            """
+            mat = mathutils.Matrix(((scale,0,0,0),(0,0,scale,0),(0,-scale,0,0),(0,0,0,1)))
+            #lk_mod_0_end
 
             # If LDrawDir does not exist, stop the import
             if not os.path.isdir(LDrawDir):  # noqa
@@ -776,6 +925,13 @@ Must be a .ldr or .dat''')
 
             # Get material list from LDConfig.ldr
             scanLDConfig(self)
+
+            #lk_mod_4-1
+            # Delete no-user meshes
+            for me in bpy.data.meshes:
+                if me.users == 0 and ('.dat.' in me.name or '.DAT.' in me.name):    #lk_memo Only LEGO meshes?
+                    bpy.data.meshes.remove(me)
+            #lk_mod_4-1_end
 
             LDrawFile(context, file_name, mat)
 
@@ -807,7 +963,9 @@ Must be a .ldr or .dat''')
 
                             # Go back to object mode, set origin to geometry
                             bpy.ops.object.mode_set(mode='OBJECT')
-                            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+                            #lk_mod_2-3
+                            #bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+                            #lk_mod_2-3_end
 
                             # Set smooth shading
                             bpy.ops.object.shade_smooth()
@@ -1187,12 +1345,14 @@ def register():
     """Register Menu Listing"""
     bpy.utils.register_module(__name__)
     bpy.types.INFO_MT_file_import.append(menu_import)
+    bpy.types.Mesh.lk_LDraw_origin = bpy.props.FloatVectorProperty(name="LDraw_origin", description="Save LDraw's origin", default = (0.0, 0.0, 0.0))	#lk_mod_5-3
 
 
 def unregister():
     """Unregister Menu Listing"""
     bpy.utils.unregister_module(__name__)
     bpy.types.INFO_MT_file_import.remove(menu_import)
+    del bpy.types.Mesh.lk_LDraw_origin	#lk_mod_5-4
 
 
 if __name__ == "__main__":
