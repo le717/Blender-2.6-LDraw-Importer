@@ -162,3 +162,6 @@ pip-log.txt
 
 # Mac junk
 .DS_Store
+
+.idea/
+__pycache__/
