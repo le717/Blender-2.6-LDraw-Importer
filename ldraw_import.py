@@ -293,7 +293,7 @@ def create_model(self, scale, context):
                     name = line_split[4]
                     colors[name] = {'color': hex_to_rgb(line_split[6][1:]), 'alpha': 1.0}
                     if len(line_split) > 10 and line_split[9] == 'ALPHA':
-                        colors[name]['alpha'] = int(line_split[10]) / 255.0
+                        colors[name]['alpha'] = int(line_split[10]) / 256.0
                     
         model = ldraw_file(file_name, mat)
         # Removes doubles and recalculate normals in each brick. Model is super high-poly without it.
