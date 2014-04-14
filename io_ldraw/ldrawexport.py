@@ -41,5 +41,5 @@ class LDrawExporter:
     def write_verts(self, face):
         for vert in face.verts:
             v = vert.co
-            self.file.write(" {0} {1} {2}".format(round(v.x, 5) * self.scale, round(v.y, 5) * self.scale, round(v.z, 5) * self.scale))
+            self.file.write(" {0} {1} {2}".format(round(v.x * self.scale, 5), round(v.y * self.scale, 5), round(v.z * self.scale, 5)))
 
