@@ -95,16 +95,6 @@ config_filename = os.path.abspath(os.path.join(config_path, "config.py"))
 #FIXME: v1.2 rewrite - Placeholder until rewrite.
 file_directory = ""
 
-
-def debugPrint(*myInput):
-    """Debug print with identification timestamp"""
-    # Format the output like print() does
-    myOutput = [str(say) for say in myInput]
-
-    # `strftime("%H:%M:%S.%f")[:-4]` trims milliseconds down to two places
-    print("\n[LDR Importer] {0} - {1}\n".format(
-        " ".join(myOutput), datetime.now().strftime("%H:%M:%S.%f")[:-4]))
-
 # Attempt to read and use the path in the config
 try:
     # A hacky trick that basically is: from config import *
@@ -130,24 +120,63 @@ except Exception as e:
                type(e).__name__))
 
 
-def checkEncoding(file_path):
-    """Check the encoding of a file for Endian encoding"""
+def debugPrint(*myInput):
+    """Debug print with identification timestamp"""
 
-    # Open it, read just the area containing a possible byte mark
-    with open(file_path, "rb") as encode_check:
-        encoding = encode_check.readline(3)
+    # Format the output like print() does
+    myOutput = [str(say) for say in myInput]
+
+    # `strftime("%H:%M:%S.%f")[:-4]` trims milliseconds down to two places
+    print("\n[LDR Importer] {0} - {1}\n".format(
+        " ".join(myOutput), datetime.now().strftime("%H:%M:%S.%f")[:-4]))
+
+
+def checkEncoding(encoding):
+    """Check the encoding of a part"""
 
     # The file uses UCS-2 (UTF-16) Big Endian encoding
     if encoding == b"\xfe\xff\x00":
         return "utf_16_be"
 
     # The file uses UCS-2 (UTF-16) Little Endian
-    elif encoding == b"\xff\xfe0":
+    # There seem to be two variants of UCS-2LE that must be checked for
+    elif encoding in (b"\xff\xfe0", b"\xff\xfe/"):
         return "utf_16_le"
 
-    # Use LDraw model stantard UTF-8
+    # Use LDraw part standard UTF-8
     else:
         return "utf_8"
+
+
+def readPart(partPath):
+    """Read parts using their proper encoding"""
+
+    debugPrint("Part being read: ", partPath)
+    # First, read the part content as bytes
+    with open(partPath, "rb") as f:
+        partContent = f.read()
+
+    # Then, get the part encoding
+    partEncoding = checkEncoding(partContent[:3])
+    debugPrint("Part encoding, Encoding header: ",
+               partEncoding, partContent[:3])
+
+    # Now decode the bytes to the proper string encoding
+    partContent = partContent.decode(partEncoding).encode("utf-8")
+
+    # Split into an array using appropriate new line characters
+    # depending on the file encoding
+    if partEncoding == "utf_16_le":
+        debugPrint("UTF-16LE encoding detected, use \\n new lines")
+        partContent = str(partContent, partEncoding).split("\n")
+    else:
+        debugPrint("UTF-8 or UTF-16BE encoding detected, use \\r\\n new lines")
+        partContent = str(partContent, partEncoding).split("\r\n")
+
+    debugPrint("The part content type is an: ", type(partContent))
+    debugPrint("(Should be <class 'list'>)")
+
+    return partContent
 
 
 class LDrawFile(object):
@@ -260,37 +289,27 @@ class LDrawFile(object):
         self.material_index.append(color)
 
     def parse(self, filename):
-        """Construct tri's in each brick"""
+        """Construct each part"""
         #FIXME: v1.2 rewrite - Rework function (#35)
         subfiles = []
 
         while True:
             isPart = False
             if os.path.exists(filename):
-
-                # Check encoding of `filename` for non UTF-8 compatibility
-                # GitHub Issue #37
-                file_encode = checkEncoding(filename)
-
                 # Check if this is a main part or a subpart
                 if not isSubPart(filename):
                     isPart = True
 
                 # Read the brick using relative path (to entire model)
-                with open(filename, "rt", encoding=file_encode) as f_in:
-                    lines = f_in.readlines()
+                lines = readPart(filename)
 
             else:
                 # Search for the brick in the various folders
                 fname, isPart = locate(filename)
 
-                # Check encoding of `fname` too
-                file_encode = checkEncoding(fname)
-
                 # It exists, read it and get the data
                 if os.path.exists(fname):
-                    with open(fname, "rt", encoding=file_encode) as f_in:
-                        lines = f_in.readlines()
+                    lines = readPart(fname)
 
                 # The brick does not exist
                 else:
