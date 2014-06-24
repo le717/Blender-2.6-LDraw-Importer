@@ -325,8 +325,8 @@ class LDrawFile(object):
                         if tmpdate[0] == "1":
                             new_file = tmpdate[14]
                             (
-                             x, y, z, a, b, c,
-                             d, e, f, g, h, i
+                                x, y, z, a, b, c,
+                                d, e, f, g, h, i
                             ) = map(float, tmpdate[2:14])
                             mat_new = self.mat * mathutils.Matrix(
                                 ((a, b, c, x), (d, e, f, y), (g, h, i, z),
@@ -832,8 +832,8 @@ Must be a .ldr or .dat''')
                 for cur_obj in objects:
                     cur_obj.select = True
                     bpy.context.scene.objects.active = cur_obj
-                    if bpy.ops.object.mode_set.poll():
 
+                    if bpy.ops.object.mode_set.poll():
                         # Change to edit mode
                         bpy.ops.object.mode_set(mode='EDIT')
                         bpy.ops.mesh.select_all(action='SELECT')
@@ -844,6 +844,27 @@ Must be a .ldr or .dat''')
 
                             # Go back to object mode
                             bpy.ops.object.mode_set(mode='OBJECT')
+
+            # The Bevel import option was selected
+            if BevelOpt:  # noqa
+                debugPrint("Bevel option selected")
+
+                # Select all the mesh
+                for cur_obj in objects:
+                    cur_obj.select = True
+                    bpy.context.scene.objects.active = cur_obj
+
+                    if bpy.ops.object.mode_set.poll():
+                        # Go back to object mode, set origin to geometry
+                        bpy.ops.object.mode_set(mode='OBJECT')
+
+                        # Add small bevel to each brick
+                        for cur_obj in objects:
+                            bevel = cur_obj.modifiers.new("Bevel", type='BEVEL')
+                            bpy.ops.object.modifier_move_up(modifier="Bevel")
+                            bevel.width = 0.01
+                            bevel.limit_method = 'ANGLE'
+                            bevel.angle_limit = 0.523599
 
             # Select all the mesh now that import is complete
             for cur_obj in objects:
@@ -1081,6 +1102,12 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         default=False
     )
 
+    addBevels = BoolProperty(
+        name="Bevel",
+        description="Add small 1-segment bevel to edges of bricks ",
+        default=False
+    )
+
     lsynthParts = BoolProperty(
         name="Use LSynth Parts",
         description="Use LSynth parts during import",
@@ -1101,15 +1128,17 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         box.prop(self, "cleanUpModel", expand=True)
         box.label("Additional Options", icon='PREFERENCES')
         box.prop(self, "addGaps")
+        box.prop(self, "addBevels")
         box.prop(self, "lsynthParts")
 
     def execute(self, context):
         """Set import options and run the script"""
-        global LDrawDir, CleanUpOpt, GapsOpt
+        global LDrawDir, CleanUpOpt, GapsOpt, BevelOpt
         LDrawDir = str(self.ldrawPath)
         WhatRes = str(self.resPrims)
         CleanUpOpt = str(self.cleanUpModel)
         GapsOpt = bool(self.addGaps)
+        BevelOpt = bool(self.addBevels)
         LSynth = bool(self.lsynthParts)
 
         # Clear array before adding data if it contains data already
