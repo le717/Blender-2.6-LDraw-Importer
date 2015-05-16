@@ -13,7 +13,7 @@ class LDrawParser:
         self.color = 16
         self.basepath = "c:\\ldraw"
         self.scale = 1.0
-        self.subfolders = ["Unofficial/parts", "Unofficial/p", "parts", "p"]
+        self.subfolders = ["Unofficial/parts", "Unofficial/p", "parts", "p", "ldd"]
         self.modelpath = modelpath
         self.material_slots = []
 
@@ -24,11 +24,17 @@ class LDrawParser:
         s = os.path.splitext(os.path.basename(filename))[0]
         mb = MeshBuilder(s, self.scale)
         mb.matrix = matrix
+        ccw = False
+        invert = False
 
         for l in model:
             if l.cmd.typ == "PartTypeComment":
                 mb.is_part = l.cmd.parttype == "Part" or l.cmd.parttype == "Unofficial_Part"
             elif l.cmd.typ == "Comment":
+                if "INVERTNEXT" in l.cmd.text:
+                    invert = True
+                if "CERTIFY CCW" in l.cmd.text:
+                    ccw = True
                 pass
             elif l.cmd.typ == "SubPart":
                 p = LDrawParser(self.modelpath)
@@ -52,8 +58,10 @@ class LDrawParser:
 
                 if smb.is_part:
                     mesh = smb.build(self.material_slots)
+                    if invert:
+                        pass
 
-                    if (len(mesh.vertices) > 0):
+                    if len(mesh.vertices) > 0:
                         import io_ldraw.materials
 
                         for col in self.material_slots:
@@ -70,17 +78,25 @@ class LDrawParser:
                         smb.finish(obj)
                 else:
                     mb.submeshes.append(smb)
+
+                invert = False
             elif l.cmd.typ == "Line":
                 mb.addEdge(l.cmd)
             elif l.cmd.typ == "Triangle":
                 if not l.cmd.color in self.material_slots:
                     self.material_slots.append(l.cmd.color)
-                mb.addFace([l.cmd.v1, l.cmd.v2, l.cmd.v3])
+                if ccw:
+                    mb.addFace([l.cmd.v1, l.cmd.v2, l.cmd.v3])
+                else:
+                    mb.addFace([l.cmd.v3, l.cmd.v2, l.cmd.v1])
                 mb.colors.append(l.cmd.color if l.cmd.color != 16 else self.color)
             elif l.cmd.typ == "Quad":
                 if not l.cmd.color in self.material_slots:
                     self.material_slots.append(l.cmd.color)
-                mb.addQuad([l.cmd.v1, l.cmd.v2, l.cmd.v3, l.cmd.v4])
+                if ccw:
+                    mb.addQuad([l.cmd.v1, l.cmd.v2, l.cmd.v3, l.cmd.v4])
+                else:
+                    mb.addQuad([l.cmd.v4, l.cmd.v3, l.cmd.v2, l.cmd.v1])
                 mb.colors.append(l.cmd.color if l.cmd.color != 16 else self.color)
 
         return mb

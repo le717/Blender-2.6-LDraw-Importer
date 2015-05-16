@@ -51,6 +51,9 @@ class MeshBuilder:
         for v in self.vertices:
             bm.verts.new(tuple(v))
 
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        bm.faces.ensure_lookup_table()
         # for e in self.edges:
         #     bm.edges.new((bm.verts.new(((e[0][0], e[0][1], e[0][2]))), bm.verts.new((e[1][0], e[1][1], e[1][2]))))
 
