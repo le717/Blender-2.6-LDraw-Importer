@@ -306,18 +306,18 @@ class LDrawFile(object):
                     if tmpdate != "":
                         tmpdate = tmpdate.split()
 
-                        # TODO What is this condition for?
-                        # le717 unable to find a case where it is hit.
-                        if (tmpdate[0] == "0" and
-                            len(tmpdate) >= 3 and
-                            tmpdate[1].lower() == "!ldraw_org" and
-                            "part" in tmpdate[2].lower() and
-                            self.part_count > 1
-                        ):
-                            self.subparts.append(
-                                [filename, self.mat, self.colour, self.orientation]
-                            )
-                            break
+                        # LDraw brick comments
+                        if tmpdate[0] == "0":
+                            if len(tmpdate) >= 3:
+                                if (
+                                    tmpdate[1] == "!LDRAW_ORG" and
+                                    'Part' in tmpdate[2]
+                                ):
+                                    if self.part_count > 1:
+                                        self.subparts.append(
+                                            [filename, self.mat, self.colour, self.orientation]
+                                        )
+                                        break
 
                         # Part content
                         if tmpdate[0] == "1":
