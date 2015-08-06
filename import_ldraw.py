@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""LDR Importer GPLv2 license.
+
+"""BEGIN GPL LICENSE BLOCK
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -15,13 +16,17 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software Foundation,
 Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
+END GPL LICENSE BLOCK
+
+Geert Daelemans 2015-08-06: Updated version to enable linking of identical parts.
+
 """
 
 bl_info = {
     "name": "LDR Importer",
     "description": "Import LDraw models in .ldr and .dat format",
-    "author": "LDR Importer developers and contributors",
-    "version": (1, 2, 5),
+    "author": "The LDR Importer Developers and Contributors",
+    "version": (1, 2, 0),
     "blender": (2, 67, 0),
     "api": 31236,
     "location": "File > Import",
@@ -33,6 +38,7 @@ bl_info = {
 
 import os
 import sys
+import math
 import mathutils
 import traceback
 from struct import unpack
@@ -51,6 +57,7 @@ from bpy_extras.io_utils import ImportHelper
 objects = []
 paths = []
 mat_list = {}
+colors = {}
 
 """
 Default LDraw installation paths
@@ -86,6 +93,11 @@ else:
 
 # Name of configuration file
 config_filename = os.path.abspath(os.path.join(config_path, "config.py"))
+
+# The ldraw file being loaded by the user.
+# FIXME: v1.2 rewrite - Placeholder until rewrite.
+file_directory = ""
+
 
 def debugPrint(*myInput):
     """Debug print with identification timestamp."""
@@ -144,8 +156,9 @@ class LDrawFile(object):
 
     """Scans LDraw files."""
 
-    # FIXME: rewrite - Rewrite entire class (#35)
-    def __init__(self, context, filename, mat, colour=None):
+    # FIXME: v1.2 rewrite - Rewrite entire class (#35)
+    # - Added orientation matrix tot handle orientation separately from top-level part
+    def __init__(self, context, filename, mat, colour=None, orientation=None):
 
         engine = context.scene.render.engine
         self.points = []
@@ -156,6 +169,7 @@ class LDrawFile(object):
         self.part_count = 0
 
         self.mat = mat
+        self.orientation = orientation
         self.colour = colour
         self.parse(filename)
 
@@ -186,9 +200,12 @@ class LDrawFile(object):
                     f.material_index = me.materials.find(material.name)
 
             self.ob = bpy.data.objects.new('LDrawObj', me)
-            self.ob.name = os.path.basename(filename)
+            self.ob.name = os.path.basename(filename.split('.')[0])
 
-            self.ob.location = (0, 0, 0)
+
+            # - Set orientation of Part via matrix_world feature in Blender
+            self.ob.matrix_world = self.orientation.normalized()
+
 
             objects.append(self.ob)
 
@@ -196,7 +213,7 @@ class LDrawFile(object):
             bpy.context.scene.objects.link(self.ob)
 
         for i in self.subparts:
-            self.submodels.append(LDrawFile(context, i[0], i[1], i[2]))
+            self.submodels.append(LDrawFile(context, i[0], i[1], i[2], i[3]))
 
     def parse_line(self, line):
         """Harvest the information from each line."""
@@ -253,7 +270,7 @@ class LDrawFile(object):
 
     def parse(self, filename):
         """Construct tri's in each brick."""
-        # FIXME: rewrite - Rework function (#35)
+        # FIXME: v1.2 rewrite - Rework function (#35)
         subfiles = []
 
         while True:
@@ -276,10 +293,10 @@ class LDrawFile(object):
                 # Search for the brick in the various folders
                 fname, isPart = locate(filename)
 
-                # The brick does not exist
-                # TODO Do not halt on this condition
-                if fname is None:
-                    return False
+
+
+
+
 
                 # Check encoding of `fname` too
                 file_encode = checkEncoding(fname)
@@ -289,46 +306,76 @@ class LDrawFile(object):
                     with open(fname, "rt", encoding=file_encode) as f_in:
                         lines = f_in.readlines()
 
+                # The brick does not exist
+                else:
+                    # FIXME: v1.2 rewrite - Throw visible error message (#11)
+                    # (self.report)
+                    debugPrint("File not found: {0}".format(fname))
+                    return False
+
             self.part_count += 1
             if self.part_count > 1 and isPart:
                 self.subparts.append([filename, self.mat, self.colour])
             else:
                 for retval in lines:
                     tmpdate = retval.strip()
-                    if tmpdate != "":
+
+                    if tmpdate != '':
                         tmpdate = tmpdate.split()
 
-                        # TODO What is this condition for?
-                        # le717 unable to find a case where it is hit.
-                        if (tmpdate[0] == "0" and
-                            len(tmpdate) >= 3 and
-                            tmpdate[1].lower() == "!ldraw_org" and
-                            "part" in tmpdate[2].lower() and
-                            self.part_count > 1
-                        ):
-                            self.subparts.append(
-                                [filename, self.mat, self.colour]
-                            )
-                            break
 
-                        # Part content
+
+
+
+
+
+                        # LDraw brick comments
+                        if tmpdate[0] == "0":
+                            if len(tmpdate) >= 3:
+                                if (
+                                    tmpdate[1] == "!LDRAW_ORG" and
+                                    'Part' in tmpdate[2]
+                                ):
+                                    if self.part_count > 1:
+
+                                        self.subparts.append(
+                                            [filename, self.mat, self.colour, self.orientation]
+
+
+
+
+                                        )
+                                        break
+
+                        # The brick content
                         if tmpdate[0] == "1":
                             new_file = tmpdate[14]
                             (
                                 x, y, z, a, b, c,
                                 d, e, f, g, h, i
                             ) = map(float, tmpdate[2:14])
-                            mat_new = self.mat * mathutils.Matrix((
-                                    (a, b, c, x),
-                                    (d, e, f, y),
-                                    (g, h, i, z),
-                                    (0, 0, 0, 1)
-                                ))
+                            # - Reset orientation of top-level Part, track original orientation
+                            if self.part_count == 1 and isPart:
+                                mat_new = self.mat * mathutils.Matrix(((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)))
+
+
+
+
+
+                                mat_ref = self.mat * mathutils.Matrix(((a, b, c, x), (d, e, f, y), (g, h, i, z), (0, 0, 0, 1))) * mathutils.Matrix.Rotation(math.radians(90), 4, 'X')
+                            else:
+                                mat_new = self.mat * mathutils.Matrix(((a, b, c, x), (d, e, f, y), (g, h, i, z), (0, 0, 0, 1)))
+
+
+
 
                             color = tmpdate[1]
                             if color == '16':
                                 color = self.colour
                             subfiles.append([new_file, mat_new, color])
+                            # - When top-level Part, save orientation separately
+                            if self.part_count == 1 and isPart:
+                                subfiles.append(['orientation', mat_ref, ''])  
 
                         # Triangle (tri)
                         if tmpdate[0] == "3":
@@ -341,6 +388,11 @@ class LDrawFile(object):
             if len(subfiles) > 0:
                 subfile = subfiles.pop()
                 filename = subfile[0]
+                # - When orientation information found, save it in self.orientation
+                if filename == 'orientation':
+                    self.orientation = subfile[1]
+                    subfile = subfiles.pop()
+                    filename = subfile[0]
                 self.mat = subfile[1]
                 self.colour = subfile[2]
             else:
@@ -387,7 +439,7 @@ def getMaterial(colour):
                 mat.raytrace_mirror.use = True
                 mat.raytrace_mirror.reflect_factor = 0.9
 
-            # elif col["material"] == "GLITTER":
+            #elif col["material"] == "GLITTER":
             #    slot = mat.texture_slots.add()
             #    tex = bpy.data.textures.new("GlitterTex", type = "STUCCI")
             #    tex.use_color_ramp = True
@@ -684,20 +736,25 @@ def getCyclesMilkyWhite(name, diff_color):
     return mat
 
 
-def isSubPart(part):
-    """Check if part is a main part or a subpart."""
+def isSubPart(brick):
+    """Check if brick is a main part or a subpart."""
     # FIXME: Remove this function
     # TODO: A file is a "part" only if its header states so.
     # (#40#issuecomment-31279788)
-    return str.lower(os.path.split(part)[0]) == "s"
+    if str.lower(os.path.split(brick)[0]) == "s":
+        isSubpart = True
+    else:
+        isSubpart = False
+
+    return isSubpart
 
 
 def locate(pattern):
-    """Check if a part exists."""
+    """Check if each part exists."""
     partName = pattern.replace("\\", os.path.sep)
 
     for path in paths:
-        # Perform a case-sensitive check
+        # Perform a direct check
         fname = os.path.join(path, partName)
         if os.path.exists(fname):
             return (fname, False)
@@ -708,151 +765,249 @@ def locate(pattern):
                 return (fname, False)
 
     debugPrint("Could not find file {0}".format(fname))
-    return (None, False)
+
+    # FIXME: v1.2 rewrite - Wrong! return error to caller, (#35)
+    # for example by returning an empty string!
+    return ("ERROR, FILE NOT FOUND", False)
 
 
-def create_model(self, context, scale):
+def create_model(self, scale, context):
     """Create the actual model."""
-    # FIXME: rewrite - Rewrite entire function (#35)
+    # FIXME: v1.2 rewrite - Rewrite entire function (#35)
     global objects
     global colors
     global mat_list
-    global fileName
 
-    fileName = self.filepath
+    global file_name
+
+    file_name = self.filepath
     # Attempt to get the directory the file came from
     # and add it to the `paths` list
-    paths[0] = os.path.dirname(fileName)
-    debugPrint("Attempting to import {0}".format(fileName))
+    paths[0] = os.path.dirname(file_name)
+    debugPrint("Attempting to import {0}".format(file_name))
 
-    # The file format as hinted to by
-    # conventional file extensions is not supported.
-    # Recommended: http://ghost.kirk.by/file-extensions-are-only-hints
-    if fileName[-4:].lower() not in (".ldr", ".dat"):
+
+
+
+
+    # Make sure the model ends with the proper file extension
+    if not (
+        file_name.endswith(".ldr")
+        or file_name.endswith(".dat")
+    ):
 
         debugPrint('''ERROR: Reason: Invalid File Type
 Must be a .ldr or .dat''')
         self.report({'ERROR'}, '''Error: Invalid File Type
 Must be a .ldr or .dat''')
-        return {'ERROR'}
 
-    # It has the proper file extension, continue with the import
-    try:
-        # Rotate and scale the parts
-        # Scale factor is divided by 25 so we can use whole number
-        # scale factors in the UI. For reference,
-        # the default scale 1 = 0.04 to Blender
-        trix = mathutils.Matrix((
-            (1.0,  0.0, 0.0, 0.0), # noqa
-            (0.0,  0.0, 1.0, 0.0), # noqa
-            (0.0, -1.0, 0.0, 0.0),
-            (0.0,  0.0, 0.0, 1.0) # noqa
-        )) * (scale / 25)
-
-        # If LDrawDir does not exist, stop the import
-        if not os.path.isdir(LDrawDir):  # noqa
-            debugPrint(''''ERROR: Cannot find LDraw installation at
-{0}'''.format(LDrawDir))  # noqa
-            self.report({'ERROR'}, '''Cannot find LDraw installation at
-{0}'''.format(LDrawDir))  # noqa
-            return {'CANCELLED'}
-
-        colors = {}
-        mat_list = {}
-
-        # Get the material list from LDConfig.ldr
-        getLDColors(self)
-
-        LDrawFile(context, fileName, trix)
-
-        """
-        Remove doubles and recalculate normals in each brick.
-        The model is super high-poly without the cleanup.
-        Cleanup can be disabled by user if wished.
-        """
-
-        # FIXME Rewrite - Split into separate function
-        # The CleanUp import option was selected
-        if CleanUpOpt == "CleanUp":  # noqa
-            debugPrint("CleanUp option selected")
-
-            # Select all the mesh
-            for cur_obj in objects:
-                cur_obj.select = True
-                bpy.context.scene.objects.active = cur_obj
-
-                if bpy.ops.object.mode_set.poll():
-                    # Change to edit mode
-                    bpy.ops.object.mode_set(mode='EDIT')
-                    bpy.ops.mesh.select_all(action='SELECT')
-
-                    # Remove doubles, calculate normals
-                    bpy.ops.mesh.remove_doubles(threshold=0.01)
-                    bpy.ops.mesh.normals_make_consistent()
-
-                    if bpy.ops.object.mode_set.poll():
-                        # Go back to object mode, set origin to geometry
-                        bpy.ops.object.mode_set(mode='OBJECT')
-                        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
-
-                        # Set smooth shading
-                        bpy.ops.object.shade_smooth()
-
-            # Add 30 degree edge split modifier to all bricks
-            for cur_obj in objects:
-                edges = cur_obj.modifiers.new(
-                    "Edge Split", type='EDGE_SPLIT')
-                edges.split_angle = 0.523599
-
-        # The Gaps import option was selected
-        if GapsOpt:  # noqa
-            debugPrint("Gaps option selected")
-
-            # Select all the mesh
-            for cur_obj in objects:
-                cur_obj.select = True
-                bpy.context.scene.objects.active = cur_obj
-                if bpy.ops.object.mode_set.poll():
-
-                    # Change to edit mode
-                    bpy.ops.object.mode_set(mode='EDIT')
-                    bpy.ops.mesh.select_all(action='SELECT')
-
-                    # Add small gaps between each brick
-                    bpy.ops.transform.resize(value=(0.99, 0.99, 0.99))
-                    if bpy.ops.object.mode_set.poll():
-
-                        # Go back to object mode
-                        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Select all the mesh now that import is complete
-        for cur_obj in objects:
-            cur_obj.select = True
-
-        # Update the scene with the changes
-        context.scene.update()
-        objects = []
-
-        # Always reset 3D cursor to <0,0,0> after import
-        bpy.context.scene.cursor_location = (0.0, 0.0, 0.0)
-
-        # Display success message
-        debugPrint("{0} successfully imported!".format(fileName))
-        return {'FINISHED'}
-
-    except Exception as e:
-        debugPrint("ERROR: {0}\n{1}\n".format(
-                   type(e).__name__, traceback.format_exc()))
-
-        debugPrint("ERROR: Reason: {0}.".format(
-                   type(e).__name__))
-
-        self.report({'ERROR'}, '''File not imported ("{0}").
-Check the console logs for more information.'''.format(type(e).__name__))
         return {'CANCELLED'}
 
+    # It has the proper file extension, continue with the import
 
-def getLDColors(self):
+
+
+
+
+
+
+
+
+
+
+    else:
+        try:
+
+            """
+            Set the initial transformation matrix,
+            set the scale factor to 0.05,
+            and rotate -90 degrees around the x-axis,
+            so the object is upright.
+            """
+            mat = mathutils.Matrix((
+                (1.0, 0.0, 0.0, 0.0),
+                (0.0, 1.0, 0.0, 0.0),
+                (0.0, 0.0, 1.0, 0.0),
+                (0.0, 0.0, 0.0, 1.0)
+            )) * scale
+            mat = mat * mathutils.Matrix.Rotation(math.radians(-90), 4, 'X')
+
+            # If LDrawDir does not exist, stop the import
+            if not os.path.isdir(LDrawDir):  # noqa
+                debugPrint(''''ERROR: Cannot find LDraw installation at
+{0}'''.format(LDrawDir))  # noqa
+                self.report({'ERROR'}, '''Cannot find LDraw installation at
+{0}'''.format(LDrawDir))  # noqa
+
+
+
+
+
+
+
+                return {'CANCELLED'}
+
+
+            colors = {}
+            mat_list = {}
+
+
+
+
+
+
+            # Get material list from LDConfig.ldr
+            scanLDConfig(self)
+
+
+
+
+
+            LDrawFile(context, file_name, mat)
+
+
+
+
+
+            """
+            Remove doubles and recalculate normals in each brick.
+            The model is super high-poly without the cleanup.
+            Cleanup can be disabled by user if wished.
+            """
+
+
+
+
+
+            # FIXME v1.2 Rewrite - Split into separate function
+            # The CleanUp import option was selected
+            if CleanUpOpt == "CleanUp":  # noqa
+                debugPrint("CleanUp option selected")
+
+
+
+
+                # Select all the mesh
+                for cur_obj in objects:
+                    cur_obj.select = True
+                    bpy.context.scene.objects.active = cur_obj
+
+                    if bpy.ops.object.mode_set.poll():
+
+                        # Change to edit mode
+                        bpy.ops.object.mode_set(mode='EDIT')
+
+                        bpy.ops.mesh.select_all(action='SELECT')
+
+
+
+                        # Remove doubles, calculate normals
+                        bpy.ops.mesh.remove_doubles(threshold=0.01)
+                        bpy.ops.mesh.normals_make_consistent()
+
+
+
+
+
+
+                        if bpy.ops.object.mode_set.poll():
+                            # Go back to object mode, set origin to geometry
+                            bpy.ops.object.mode_set(mode='OBJECT')
+                            bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY')
+
+
+
+
+                            # Set smooth shading
+                            bpy.ops.object.shade_smooth()
+
+
+
+
+
+
+                # Add 30 degree edge split modifier to all bricks
+                for cur_obj in objects:
+                    edges = cur_obj.modifiers.new(
+                        "Edge Split", type='EDGE_SPLIT')
+                    edges.split_angle = 0.523599
+
+
+
+
+            # The Gaps import option was selected
+            if GapsOpt:  # noqa
+                debugPrint("Gaps option selected")
+
+
+
+                # Select all the mesh
+                for cur_obj in objects:
+                    cur_obj.select = True
+                    bpy.context.scene.objects.active = cur_obj
+                    if bpy.ops.object.mode_set.poll():
+
+
+                        # Change to edit mode
+                        bpy.ops.object.mode_set(mode='EDIT')
+                        bpy.ops.mesh.select_all(action='SELECT')
+
+
+
+
+                        # Add small gaps between each brick
+                        bpy.ops.transform.resize(value=(0.99, 0.99, 0.99))
+                        if bpy.ops.object.mode_set.poll():
+
+
+
+
+                            # Go back to object mode
+                            bpy.ops.object.mode_set(mode='OBJECT')
+
+
+
+            # Link identical bricks
+            if LinkParts:
+                linkedParts()
+            
+            # Select all the mesh now that import is complete
+            for cur_obj in objects:
+                cur_obj.select = True
+
+
+
+
+            # Update the scene with the changes
+            context.scene.update()
+            objects = []
+
+
+
+
+            # Always reset 3D cursor to <0,0,0> after import
+            bpy.context.scene.cursor_location = (0.0, 0.0, 0.0)
+
+
+
+            # Display success message
+            debugPrint("{0} successfully imported!".format(file_name))
+            return {'FINISHED'}
+
+        except Exception as e:
+            debugPrint("ERROR: {0}\n{1}\n".format(
+                       type(e).__name__, traceback.format_exc()))
+
+            debugPrint("ERROR: Reason: {0}.".format(
+                       type(e).__name__))
+
+            self.report({'ERROR'}, '''File not imported ("{0}").
+Check the console logs for more information.'''.format(type(e).__name__))
+
+            return {'CANCELLED'}
+
+
+def scanLDConfig(self):
     """Scan LDConfig to get the material color info."""
     # LDConfig.ldr does not exist for some reason
     if not os.path.exists(os.path.join(LDrawDir, "LDConfig.ldr")):  # noqa
@@ -866,9 +1021,9 @@ Check the console logs for more information.'''.format(LDrawDir))  # noqa
 
     with open(os.path.join(LDrawDir, "LDConfig.ldr"),  # noqa
               "rt", encoding="utf_8") as ldconfig:
-        lines = ldconfig.readlines()
+        ldconfig_lines = ldconfig.readlines()
 
-    for line in lines:
+    for line in ldconfig_lines:
         if len(line) > 3:
             if line[2:4].lower() == '!c':
                 line_split = line.split()
@@ -884,6 +1039,7 @@ Check the console logs for more information.'''.format(LDrawDir))  # noqa
                     "material": "BASIC"
                 }
 
+                #if len(line_split) > 10 and line_split[9] == 'ALPHA':
                 if hasColorValue(line_split, "ALPHA"):
                     color["alpha"] = int(
                         getColorValue(line_split, "ALPHA")) / 256.0
@@ -928,6 +1084,41 @@ def getColorValue(line, value):
     if value in line:
         n = line.index(value)
         return line[n + 1]
+        
+# Clean-up the design by linking identical parts (mesh/colour)        
+def linkedParts():
+    colours = []
+    for colour in bpy.data.materials:
+        colours.append(colour.name)
+    
+    parts = []
+    for part in bpy.data.objects:
+        if part.type == 'MESH' and part.name.split('.')[0] not in parts:
+            parts.append(part.name.split('.')[0])
+
+    for part in parts:
+        for colour in colours:
+            replaceParts(part, colour)
+
+# Replace identical meshes of part/colour-combination with a linked version   
+def replaceParts(Part, Colour):
+    scene = bpy.context.scene
+    mat = bpy.data.materials[Colour]
+    mesh = ''
+
+    for ob in scene.objects:
+        if ob.type == 'MESH' and ob.name.split('.')[0] == Part:
+            for slot in ob.material_slots:
+                if slot.material == mat:
+                    if mesh == '':
+                        mesh = ob.data
+                    else:
+                        ob.data = mesh    
+                    ob.select = True
+        else: 
+            ob.select = False
+    if mesh != '':
+        mesh.name = Part + ' ' + Colour           
 
 
 def findWinLDrawDir():
@@ -1029,6 +1220,7 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
 {0}'''.format(FinalLDrawDir))
 
     ldrawPath = StringProperty(
+        # Leave `name` blank for better display
         name="",
         description="Path to the LDraw Parts Library",
         default=FinalLDrawDir,
@@ -1040,7 +1232,7 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
     scale = FloatProperty(
         name="Scale",
         description="Use a specific scale for each brick",
-        default=1.00
+        default=0.05
     )
 
     resPrims = EnumProperty(
@@ -1061,14 +1253,21 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         default=False
     )
 
+
     lsynthParts = BoolProperty(
         name="Use LSynth Parts",
         description="Use LSynth parts during import",
         default=False
     )
 
+    links = BoolProperty(
+        name="Link Identical Bricks",
+        description="Add links to bricks of same form and colour",
+        default=False
+    )
+
     def draw(self, context):
-        """Display import options."""
+        """Display model cleanup options."""
         layout = self.layout
         box = layout.box()
         box.label("Import Options", icon='SCRIPTWIN')
@@ -1082,15 +1281,17 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         box.label("Additional Options", icon='PREFERENCES')
         box.prop(self, "addGaps")
         box.prop(self, "lsynthParts")
+        box.prop(self, "links")
 
     def execute(self, context):
         """Set import options and run the script."""
-        global LDrawDir, CleanUpOpt, GapsOpt
+        global LDrawDir, CleanUpOpt, GapsOpt, LinkParts
         LDrawDir = str(self.ldrawPath)
         WhatRes = str(self.resPrims)
         CleanUpOpt = str(self.cleanUpModel)
         GapsOpt = bool(self.addGaps)
         LSynth = bool(self.lsynthParts)
+        LinkParts = bool(self.links)
 
         # Clear array before adding data if it contains data already
         # Not doing so duplicates the indexes
@@ -1123,10 +1324,10 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
 
             # The user wants to use LSynth parts
             if LSynth:
-                if os.path.exists(os.path.join(LDrawDir, "unofficial",
-                                               "lsynth")):
-                    paths.append(os.path.join(LDrawDir, "unofficial",
-                                              "lsynth"))
+                if os.path.exists(os.path.join(LDrawDir, "unofficial", "lsynth")):
+
+                    paths.append(os.path.join(LDrawDir, "unofficial", "lsynth"))
+
                     debugPrint("Use LSynth Parts selected")
 
         # Always search for parts in the `parts` folder
@@ -1157,7 +1358,7 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         if sys.platform == "win32":
             saveInstallPath(self)
 
-        create_model(self, context, self.scale)
+        create_model(self, self.scale, context)
         return {'FINISHED'}
 
 
