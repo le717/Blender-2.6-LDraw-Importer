@@ -37,6 +37,7 @@ bl_info = {
 
 import os
 import sys
+import math
 import mathutils
 import traceback
 from struct import unpack
