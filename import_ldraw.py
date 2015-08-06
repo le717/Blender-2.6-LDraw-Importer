@@ -15,6 +15,10 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software Foundation,
 Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 
+
+Geert Daelemans 2015-08-06: Updated version to enable linking of identical parts.
+
+
 """
 
 bl_info = {
@@ -145,7 +149,8 @@ class LDrawFile(object):
     """Scans LDraw files."""
 
     # FIXME: rewrite - Rewrite entire class (#35)
-    def __init__(self, context, filename, mat, colour=None):
+    # - Added orientation matrix tot handle orientation separately from top-level part
+    def __init__(self, context, filename, mat, colour=None, orientation=None):
 
         engine = context.scene.render.engine
         self.points = []
@@ -156,6 +161,7 @@ class LDrawFile(object):
         self.part_count = 0
 
         self.mat = mat
+        self.orientation = orientation
         self.colour = colour
         self.parse(filename)
 
@@ -186,9 +192,10 @@ class LDrawFile(object):
                     f.material_index = me.materials.find(material.name)
 
             self.ob = bpy.data.objects.new('LDrawObj', me)
-            self.ob.name = os.path.basename(filename)
+            self.ob.name = os.path.basename(filename.split('.')[0])
 
-            self.ob.location = (0, 0, 0)
+            # - Set orientation of Part via matrix_world feature in Blender
+            self.ob.matrix_world = self.orientation.normalized()
 
             objects.append(self.ob)
 
@@ -196,7 +203,7 @@ class LDrawFile(object):
             bpy.context.scene.objects.link(self.ob)
 
         for i in self.subparts:
-            self.submodels.append(LDrawFile(context, i[0], i[1], i[2]))
+            self.submodels.append(LDrawFile(context, i[0], i[1], i[2], i[3]))
 
     def parse_line(self, line):
         """Harvest the information from each line."""
@@ -307,7 +314,7 @@ class LDrawFile(object):
                             self.part_count > 1
                         ):
                             self.subparts.append(
-                                [filename, self.mat, self.colour]
+                                [filename, self.mat, self.colour, self.orientation]
                             )
                             break
 
@@ -318,18 +325,19 @@ class LDrawFile(object):
                                 x, y, z, a, b, c,
                                 d, e, f, g, h, i
                             ) = map(float, tmpdate[2:14])
-                            mat_new = self.mat * mathutils.Matrix((
-                                    (a, b, c, x),
-                                    (d, e, f, y),
-                                    (g, h, i, z),
-                                    (0, 0, 0, 1)
-                                ))
-
+                            # - Reset orientation of top-level Part, track original orientation
+                            if self.part_count == 1 and isPart:
+                                mat_new = self.mat * mathutils.Matrix(((1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)))
+                                mat_ref = self.mat * mathutils.Matrix(((a, b, c, x), (d, e, f, y), (g, h, i, z), (0, 0, 0, 1))) * mathutils.Matrix.Rotation(math.radians(90), 4, 'X')
+                            else:
+                                mat_new = self.mat * mathutils.Matrix(((a, b, c, x), (d, e, f, y), (g, h, i, z), (0, 0, 0, 1)))
                             color = tmpdate[1]
                             if color == '16':
                                 color = self.colour
                             subfiles.append([new_file, mat_new, color])
-
+                            # - When top-level Part, save orientation separately
+                            if self.part_count == 1 and isPart:
+                                subfiles.append(['orientation', mat_ref, ''])  
                         # Triangle (tri)
                         if tmpdate[0] == "3":
                             self.parse_line(tmpdate)
@@ -341,6 +349,11 @@ class LDrawFile(object):
             if len(subfiles) > 0:
                 subfile = subfiles.pop()
                 filename = subfile[0]
+                # - When orientation information found, save it in self.orientation
+                if filename == 'orientation':
+                    self.orientation = subfile[1]
+                    subfile = subfiles.pop()
+                    filename = subfile[0]
                 self.mat = subfile[1]
                 self.colour = subfile[2]
             else:
@@ -825,6 +838,10 @@ Must be a .ldr or .dat''')
                         # Go back to object mode
                         bpy.ops.object.mode_set(mode='OBJECT')
 
+        # Link identical bricks
+        if LinkParts:
+            linkedParts()
+            
         # Select all the mesh now that import is complete
         for cur_obj in objects:
             cur_obj.select = True
@@ -928,6 +945,41 @@ def getColorValue(line, value):
     if value in line:
         n = line.index(value)
         return line[n + 1]
+        
+# Clean-up the design by linking identical parts (mesh/colour)        
+def linkedParts():
+    colours = []
+    for colour in bpy.data.materials:
+        colours.append(colour.name)
+    
+    parts = []
+    for part in bpy.data.objects:
+        if part.type == 'MESH' and part.name.split('.')[0] not in parts:
+            parts.append(part.name.split('.')[0])
+
+    for part in parts:
+        for colour in colours:
+            replaceParts(part, colour)
+
+# Replace identical meshes of part/colour-combination with a linked version   
+def replaceParts(Part, Colour):
+    scene = bpy.context.scene
+    mat = bpy.data.materials[Colour]
+    mesh = ''
+
+    for ob in scene.objects:
+        if ob.type == 'MESH' and ob.name.split('.')[0] == Part:
+            for slot in ob.material_slots:
+                if slot.material == mat:
+                    if mesh == '':
+                        mesh = ob.data
+                    else:
+                        ob.data = mesh    
+                    ob.select = True
+        else: 
+            ob.select = False
+    if mesh != '':
+        mesh.name = Part + ' ' + Colour           
 
 
 def findWinLDrawDir():
@@ -1067,6 +1119,12 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         default=False
     )
 
+    links = BoolProperty(
+        name="Link Identical Bricks",
+        description="Add links to bricks of same form and colour",
+        default=False
+    )
+
     def draw(self, context):
         """Display import options."""
         layout = self.layout
@@ -1082,15 +1140,17 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         box.label("Additional Options", icon='PREFERENCES')
         box.prop(self, "addGaps")
         box.prop(self, "lsynthParts")
+        box.prop(self, "links")
 
     def execute(self, context):
         """Set import options and run the script."""
-        global LDrawDir, CleanUpOpt, GapsOpt
+        global LDrawDir, CleanUpOpt, GapsOpt, LinkParts
         LDrawDir = str(self.ldrawPath)
         WhatRes = str(self.resPrims)
         CleanUpOpt = str(self.cleanUpModel)
         GapsOpt = bool(self.addGaps)
         LSynth = bool(self.lsynthParts)
+        LinkParts = bool(self.links)
 
         # Clear array before adding data if it contains data already
         # Not doing so duplicates the indexes
