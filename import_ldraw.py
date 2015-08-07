@@ -147,14 +147,17 @@ class LDrawFile(object):
 
     # FIXME: rewrite - Rewrite entire class (#35)
 
-    def __init__(self, context, filename, mat, color=None, orientation=None):
+    def __init__(self, context, filename, level, mat, color=None, orientation=None):
 
+        self.context = context
+        self.level = level
         engine = context.scene.render.engine
         self.points = []
         self.faces = []
         self.material_index = []
-        self.subparts = []
-        self.submodels = []
+        #NOT USED...
+        #self.subparts = []
+        #self.submodels = []
         self.part_count = 0
 
         # Orientation matrix to handle orientation separately (top-level part only)
@@ -202,8 +205,9 @@ class LDrawFile(object):
             # Link object to scene
             bpy.context.scene.objects.link(self.ob)
 
-        for i in self.subparts:
-            self.submodels.append(LDrawFile(context, i[0], i[1], i[2], i[3]))
+        # NOT REQUIRED when LDrawFile is called immediately  
+        #for i in self.subparts:
+        #    self.submodels.append(LDrawFile(context, i[0], i[1], i[2], i[3]))
 
     def parse_line(self, line):
         """Harvest the information from each line."""
@@ -298,7 +302,8 @@ class LDrawFile(object):
 
             self.part_count += 1
             if self.part_count > 1 and isPart:
-                self.subparts.append([filename, self.mat, self.color])
+                #self.subparts.append([filename, self.mat, self.color])
+                LDrawFile(self.context, filename, level, self.mat, self.color, self.orientation)
             else:
                 for retval in lines:
                     tmpdate = retval.strip()
@@ -308,17 +313,18 @@ class LDrawFile(object):
                         # LDraw brick comments
                         if tmpdate[0] == "0":
                             if len(tmpdate) >= 3:
-                                # TODO Figure out why case-insensitivity would break
-                                # some top-level bricks into separate pieces (LDraw library-issue?)
+                                # Limit drawing to parts on top-level
                                 if (
                                     tmpdate[1] == "!LDRAW_ORG" and
-                                    'Part' in tmpdate[2]
+                                    tmpdate[2] == "Part" and
+                                    self.part_count > 1 and
+                                    self.level == 0
                                 ):
-                                    if self.part_count > 1:
-                                        self.subparts.append(
-                                            [filename, self.mat, self.color, self.orientation]
-                                        )
-                                        break
+                                        #self.subparts.append(
+                                        #    [filename, self.mat, self.color, self.orientation]
+                                        #)
+                                    LDrawFile(self.context, filename, self.level + 1, self.mat, self.color, self.orientation)
+                                    break
 
                         # Part content
                         if tmpdate[0] == "1":
@@ -795,7 +801,7 @@ Must be a .ldr or .dat''')
         # Get the material list from LDConfig.ldr
         getLDColors(self)
 
-        LDrawFile(context, fileName, trix)
+        LDrawFile(context, fileName, 0, trix)
 
         """
         Remove doubles and recalculate normals in each brick.
