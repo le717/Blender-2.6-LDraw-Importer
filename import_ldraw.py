@@ -283,21 +283,6 @@ class LDrawFile(object):
                     if tmpdate != "":
                         tmpdate = tmpdate.split()
 
-                        # TODO What is this condition for?
-                        # le717 unable to find a case where it is hit.
-                        # Header is not read for LinkParts (= improvement?)
-                        if (tmpdate[0] == "0" and
-                            len(tmpdate) >= 3 and
-                            tmpdate[1].lower() == "!ldraw_org" and
-                            "part" in tmpdate[2].lower() and
-                            self.part_count > 1 and
-                            not LinkParts
-                        ):
-                            self.subparts.append(
-                                [filename, self.level + 1, self.mat, self.colour, self.orientation]
-                            )
-                            break
-
                         # Part content
                         if tmpdate[0] == "1":
                             new_file = tmpdate[14]
