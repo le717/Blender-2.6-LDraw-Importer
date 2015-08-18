@@ -174,7 +174,7 @@ class LDrawFile(object):
 
             self.ob = bpy.data.objects.new('LDrawObj', me)
             # Naming of objects: filename of .dat-file, without extension
-            self.ob.name = os.path.basename(filename.split('.')[0])
+            self.ob.name = os.path.basename(filename)[:-4]
 
             if LinkParts:
                 # Set top-level part orientation using Blender's 'matrix_world'
@@ -291,6 +291,7 @@ class LDrawFile(object):
                                 d, e, f, g, h, i
                             ) = map(float, tmpdate[2:14])
                             # Reset orientation of top-level part, track original orientation
+                            # TODO Check if isPart dependency can be avoided
                             if self.part_count == 1 and isPart and LinkParts:
                                 mat_new = self.mat * mathutils.Matrix((
                                         (1, 0, 0, 0),
@@ -899,6 +900,7 @@ Must be a .ldr or .dat''')
 
         # Link identical bricks
         if LinkParts:
+            debugPrint("LinkParts option selected")
             linkedParts()
             
         # Select all the mesh now that import is complete
@@ -1012,7 +1014,7 @@ def linkedParts():
     
     # List all unique meshes; for example 3002 and 3002.001 are considered equal.
     parts = []
-    for part in bpy.data.objects:
+    for part in objects:
         # Find all unique names of meshes, ignoring everything behind the '.'
         # and create a list of these names, making sure no double enties occur.
         if part.type == 'MESH' and part.name.split('.')[0] not in parts:
@@ -1029,8 +1031,8 @@ def replaceParts(part, color):
     mat = bpy.data.materials[color]
     mesh = None
     
-    # For each object in the scene check if it matches the given part name.
-    for ob in scene.objects:
+    # For each imported object in the scene check if it matches the given part name.
+    for ob in objects:
         if ob.type == 'MESH' and ob.name.split('.')[0] == part:
             for slot in ob.material_slots:
                 if slot.material == mat:
