@@ -1,3 +1,4 @@
+sudo: false
 language: python
 python:
   - 3.3
@@ -5,12 +6,5 @@ python:
 
 install: pip install -r requirements.txt
 script:
-  - flake8 --max-complexity 10 .
+  - flake8 .
   - pep257 . --explain
-
-notifications:
-  email:
-    recipients:
-      - LDR-Importer@noreply.github.com
-    on_success: change
-    on_failure: change
