@@ -836,45 +836,41 @@ Must be a .ldr or .dat''')
 
             # Select all the mesh
             for cur_obj in objects:
+                bpy.ops.object.select_all(action='DESELECT')
                 cur_obj.select = True
                 bpy.context.scene.objects.active = cur_obj
-                if bpy.ops.object.mode_set.poll():
 
-                    # Change to edit mode
-                    bpy.ops.object.mode_set(mode='EDIT')
-                    bpy.ops.mesh.select_all(action='SELECT')
+                gapWidth = 0.007
+                objScale = cur_obj.scale * scale
+                dim = cur_obj.dimensions
+                
+                # Checks whether the object isn't flat in a certain direction
+                # to avoid division by zero.
+                # Otherwise, the scale factor is proportional to the inverse of
+                # the dimension so that the mesh shrinks a fixed distance
+                # (determined by the gap_width and the scale of the object)
+                # in every direction, creating a uniform gap.
+                if dim.x != 0:
+                    facX = 1 - 2 * gapWidth * abs(objScale.x) / dim.x
+                else:
+                    facX = 1
+                if dim.y != 0:
+                    facY = 1 - 2 * gapWidth * abs(objScale.y) / dim.y
+                else:
+                    facY = 1
+                if dim.z != 0:
+                    facZ = 1 - 2 * gapWidth * abs(objScale.z) / dim.z
+                else:
+                    facZ = 1
 
-                    # Add small gaps between each brick
-                    gap_width = 0.3
-                    obj_scale = cur_obj.scale * scale
-                    dim = cur_obj.dimensions
+                bpy.context.object.scale[0] *= facX
+                bpy.context.object.scale[1] *= facY
+                bpy.context.object.scale[2] *= facZ
 
-                    # Checks whether the object isn't flat in a certain direction
-                    # to avoid division by zero.
-                    # Otherwise, the scale factor is proportional to the inverse of
-                    # the dimension so that the mesh shrinks a fixed distance
-                    # (determined by the gap_width and the scale of the object)
-                    # in every direction, creating a uniform gap.
-                    if dim.x != 0: 
-                        fac_x = 1 - gap_width * abs(obj_scale.x) / dim.x
-                    else: 
-                        fac_x = 1
-                    if dim.y != 0: 
-                        fac_y = 1 - gap_width * abs(obj_scale.y) / dim.y
-                    else: 
-                        fac_y = 1
-                    if dim.z != 0: 
-                        fac_z = 1 - gap_width * abs(obj_scale.z) / dim.z
-                    else: 
-                        fac_z = 1
-
-                    bpy.ops.transform.resize(value = (fac_x,fac_y,fac_z))
-                    
-                    if bpy.ops.object.mode_set.poll():
-
-                        # Go back to object mode
-                        bpy.ops.object.mode_set(mode='OBJECT')
-
+                bpy.ops.object.transform_apply(location=False, rotation=False,\
+                                               scale=True)
+                bpy.ops.object.select_all(action='DESELECT')
+                
         # Link identical bricks
         if LinkParts:  # noqa
             Console.log("LinkParts option selected")
