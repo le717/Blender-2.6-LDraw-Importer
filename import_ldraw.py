@@ -840,6 +840,8 @@ Must be a .ldr or .dat''')
                 bpy.context.scene.objects.active = cur_obj
                 if bpy.ops.object.mode_set.poll():
 
+                    # THINGS ARE GOING DOWN!
+
                     # Change to edit mode
                     bpy.ops.object.mode_set(mode='EDIT')
                     bpy.ops.mesh.select_all(action='SELECT')
