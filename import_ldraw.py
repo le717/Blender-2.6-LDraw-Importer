@@ -840,35 +840,30 @@ Must be a .ldr or .dat''')
                 cur_obj.select = True
                 bpy.context.scene.objects.active = cur_obj
 
-                gapWidth = 0.007
+                gapWidth = 0.007    # Effectively controls the width of the gaps
                 objScale = cur_obj.scale * scale
                 dim = cur_obj.dimensions
                 
                 # Checks whether the object isn't flat in a certain direction
                 # to avoid division by zero.
-                # Otherwise, the scale factor is proportional to the inverse of
+                # Else, the scale factor is taken proportional to the inverse of
                 # the dimension so that the mesh shrinks a fixed distance
                 # (determined by the gap_width and the scale of the object)
                 # in every direction, creating a uniform gap.
+                scaleFac = {"x": 1, "y": 1, "z": 1}
+
                 if dim.x != 0:
-                    facX = 1 - 2 * gapWidth * abs(objScale.x) / dim.x
-                else:
-                    facX = 1
+                    scaleFac["x"] = 1 - 2 * gapWidth * abs(objScale.x) / dim.x
                 if dim.y != 0:
-                    facY = 1 - 2 * gapWidth * abs(objScale.y) / dim.y
-                else:
-                    facY = 1
+                    scaleFac["y"] = 1 - 2 * gapWidth * abs(objScale.y) / dim.y
                 if dim.z != 0:
-                    facZ = 1 - 2 * gapWidth * abs(objScale.z) / dim.z
-                else:
-                    facZ = 1
+                    scaleFac["z"] = 1 - 2 * gapWidth * abs(objScale.z) / dim.z
 
-                bpy.context.object.scale[0] *= facX
-                bpy.context.object.scale[1] *= facY
-                bpy.context.object.scale[2] *= facZ
+                bpy.context.object.scale[0] *= scaleFac["x"]
+                bpy.context.object.scale[1] *= scaleFac["y"]
+                bpy.context.object.scale[2] *= scaleFac["z"]
 
-                bpy.ops.object.transform_apply(location=False, rotation=False,\
-                                               scale=True)
+                bpy.ops.object.transform_apply(scale=True)
                 bpy.ops.object.select_all(action='DESELECT')
                 
         # Link identical bricks
