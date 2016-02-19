@@ -840,7 +840,8 @@ Must be a .ldr or .dat''')
                 cur_obj.select = True
                 bpy.context.scene.objects.active = cur_obj
 
-                gapWidth = 0.007    # Effectively controls the width of the gaps
+		# To change the width of the gaps, change the gapWidth variable
+                gapWidth = 0.007
                 objScale = cur_obj.scale * scale
                 dim = cur_obj.dimensions
                 
