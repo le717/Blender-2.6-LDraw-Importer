@@ -264,6 +264,14 @@ class LDrawFile(object):
                                 subfiles.append(['orientation',
                                                  orientation, ''])
 
+                            # Adds the LEGO logo on top of every stud. It is
+                            # assumed that the logo3.dat file is available in
+                            # the given p directory
+                            if LogosOpt and new_file == "stud.dat":
+                                mat_logo = self.mat * mathutils.Matrix(
+                                    ((a,b,c,x),(d,e,f,y-4),(g,h,i,z),(0,0,0,1)))
+                                subfiles.append(["logo3.dat", mat_logo, color])
+
                         # Triangle (tri)
                         if tmpdate[0] == "3":
                             self.parse_line(tmpdate)
@@ -829,7 +837,7 @@ Must be a .ldr or .dat''')
                     bpy.ops.mesh.select_all(action='SELECT')
 
                     # Remove doubles, calculate normals
-                    bpy.ops.mesh.remove_doubles(threshold=0.01)
+                    bpy.ops.mesh.remove_doubles(threshold=scale*0.005)
                     bpy.ops.mesh.normals_make_consistent()
 
                     if bpy.ops.object.mode_set.poll():
@@ -1044,6 +1052,12 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         default=prefs.get("addGaps", False)
     )
 
+    addLogos = BoolProperty(
+        name="LEGO Logo On Studs",
+        description="Add the LEGO logo on top of all studs",
+        default=prefs.get("addLogos", False)
+    )
+
     lsynthParts = BoolProperty(
         name="Use LSynth Parts",
         description="Use LSynth parts during import",
@@ -1071,16 +1085,18 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         box.label("Additional Options", icon='PREFERENCES')
         box.prop(self, "altColors")
         box.prop(self, "addGaps")
+        box.prop(self, "addLogos")
         box.prop(self, "lsynthParts")
         box.prop(self, "linkParts")
 
     def execute(self, context):
         """Set import options and start the import process."""
-        global LDrawDir, CleanUpOpt, AltColorsOpt, GapsOpt, LinkParts
+        global LDrawDir, CleanUpOpt, AltColorsOpt, GapsOpt, LogosOpt, LinkParts
         LDrawDir = str(self.ldrawPath)
         CleanUpOpt = str(self.cleanUpParts)
         AltColorsOpt = bool(self.altColors)
         GapsOpt = bool(self.addGaps)
+        LogosOpt = bool(self.addLogos)
         LinkParts = bool(self.linkParts)
 
         # Clear array before adding data if it contains data already
@@ -1142,6 +1158,7 @@ class LDRImporterOps(bpy.types.Operator, ImportHelper):
         # Create the preferences dictionary
         importOpts = {
             "addGaps": self.addGaps,
+            "addLogos": self.addLogos,
             "altColors": self.altColors,
             "cleanUpParts": self.cleanUpParts,
             "importScale": self.importScale,
